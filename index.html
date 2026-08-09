@@ -2,76 +2,354 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Live Booking Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booking Progress</title>
 <style>
-  body { font-family: -apple-system, Segoe UI, sans-serif; background: #f5f4ef; margin: 0; padding: 24px; }
-  h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
-  .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
-  .list { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
-  .card {
-    background: #fff; border: 1px solid #e2e0d8; border-radius: 10px;
-    padding: 14px 18px; display: flex; justify-content: space-between; align-items: center;
-    animation: fadeIn 0.4s ease;
+  :root {
+    --navy: #1b3358;
+    --navy-deep: #16294a;
+    --cream: #dedcc6;
+    --bar: #f5b935;
+    --bar-full: #6cc08b;
+    --target: #ef8b3c;
+    --ink: #2c3033;
+    --ink-soft: #5d6470;
+    --grid: #c9c6b0;
+    --yellow: #f2b233;
+    --gutter: 46px;
+    --slot: 96px;
   }
-  .name { font-weight: 500; font-size: 15px; }
-  .trip { color: #666; font-size: 13px; margin-top: 2px; }
-  .time { color: #999; font-size: 12px; white-space: nowrap; margin-left: 12px; }
-  .badge {
-    display: inline-block; background: #e1f5ee; color: #04342c;
-    font-size: 12px; padding: 2px 8px; border-radius: 6px; margin-top: 4px;
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 18px;
+    background: var(--navy);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  .empty { color: #999; font-size: 14px; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .head { display: flex; align-items: flex-start; gap: 26px; padding: 2px 4px 14px; flex-wrap: wrap; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 30px; font-weight: 800; color: var(--yellow);
+    letter-spacing: -0.01em; white-space: nowrap;
+  }
+  .brand svg { width: 34px; height: 34px; flex: none; }
+  .titles { padding-top: 3px; }
+  .titles h1 { margin: 0; font-size: 21px; font-weight: 700; }
+  .asof { margin-top: 3px; font-size: 12px; font-weight: 600; color: #cdd6e4; }
+  .asof b { color: var(--yellow); font-weight: 700; }
+  .spacer { flex: 1; }
+
+  .tools { display: flex; align-items: center; gap: 8px; padding-top: 5px; }
+  .btn {
+    background: transparent; color: #cdd6e4; border: 1px solid #3d5680;
+    border-radius: 7px; padding: 6px 11px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .btn:hover { background: var(--navy-deep); color: #fff; }
+  .btn[aria-pressed="true"] { background: var(--yellow); border-color: var(--yellow); color: var(--navy); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #58c493; flex: none; }
+  .dot.warn { background: var(--target); }
+
+  .scroller { overflow-x: auto; overflow-y: hidden; }
+  .canvas { min-width: 100%; transition: opacity .18s ease; }
+  .canvas.loading { opacity: .45; }
+
+  .plot {
+    position: relative; height: 400px; background: var(--cream);
+    padding: 30px var(--gutter) 0; border-radius: 2px;
+  }
+  .rule { position: absolute; left: var(--gutter); right: var(--gutter); height: 1px; background: var(--grid); }
+  .rule .tick {
+    position: absolute; left: calc(var(--gutter) * -1); top: -8px; width: 32px;
+    text-align: right; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
+  }
+  .targetline { position: absolute; left: 0; right: 0; height: 2px; background: var(--target); }
+  .targetflag {
+    position: absolute; left: 6px; top: -9px; background: var(--navy); color: #fff;
+    font-size: 8.5px; font-weight: 700; letter-spacing: .09em; padding: 3px 7px; border-radius: 3px;
+  }
+
+  .groups { position: relative; display: flex; height: 100%; align-items: flex-end; }
+  .group { display: flex; position: relative; min-width: 0; }
+  .group + .group::before {
+    content: ""; position: absolute; left: 0; top: -30px; bottom: 0; width: 1px; background: var(--grid);
+  }
+
+  .slot {
+    flex: 1 1 0; min-width: var(--slot); height: 100%;
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+    position: relative;
+  }
+  .val { font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1; margin-bottom: 6px; }
+  .slot.zero .val { color: var(--ink-soft); }
+  .bar { width: 22px; background: var(--bar); border-radius: 4px 4px 0 0; transition: height .3s ease; }
+  .slot.full .bar { background: var(--bar-full); }
+  .slot:hover .bar { filter: brightness(1.07); }
+  .slot.off .bar { opacity: .3; }
+
+  .stamp {
+    position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%) rotate(-11deg);
+    background: var(--navy); color: #fff; font-size: 8.5px; font-weight: 700;
+    letter-spacing: .1em; padding: 4px 9px; border-radius: 3px; white-space: nowrap;
+  }
+
+  .axis { display: flex; padding: 0 var(--gutter); }
+  .axis .group { flex-direction: column; }
+  .axis .row { display: flex; }
+  .axis .cell {
+    flex: 1 1 0; min-width: var(--slot); padding: 9px 5px 10px;
+    text-align: center; font-size: 10.5px; line-height: 1.35; color: #dfe6f0;
+  }
+  .axis .group + .group::before { display: none; }
+  .chip {
+    align-self: center; margin: 2px auto 0; max-width: 96%;
+    background: var(--navy-deep); border: 1px solid #33507d; color: #fff;
+    font-size: 11px; font-weight: 700; letter-spacing: .03em;
+    padding: 6px 14px; border-radius: 3px; text-align: center;
+  }
+
+  .tip {
+    position: fixed; z-index: 40; pointer-events: none; opacity: 0;
+    background: #0f1f38; border: 1px solid #35507a; border-radius: 8px;
+    padding: 9px 11px; font-size: 12px; line-height: 1.5; color: #eaf0f8;
+    box-shadow: 0 8px 22px rgba(0,0,0,.4); max-width: 280px; transition: opacity .12s;
+  }
+  .tip.on { opacity: 1; }
+  .tip b { color: var(--yellow); }
+  .tip .k { color: #9fb0c8; }
+
+  table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 13px; }
+  caption { text-align: left; padding: 6px 2px 10px; color: #cdd6e4; font-size: 12px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2b4570; }
+  th { color: #9fb0c8; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+
+  .msg { padding: 26px 4px; color: #cdd6e4; font-size: 14px; }
+  .msg.err { color: #ffbfa8; }
 </style>
 </head>
 <body>
-  <h1>Live booking dashboard</h1>
-  <div class="subtitle" id="status">Loading...</div>
-  <div class="list" id="list"></div>
+  <div class="head">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16z"/></svg>
+      Booking Progress
+    </div>
+    <div class="titles">
+      <h1 id="range">Booking Data</h1>
+      <div class="asof">As of: <b id="asof">—</b></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="tools">
+      <span class="dot" id="dot" title="Live"></span>
+      <button class="btn" id="tableBtn" aria-pressed="false">Table view</button>
+      <button class="btn" id="refreshBtn">Refresh</button>
+    </div>
+  </div>
+
+  <div id="chart">
+    <div class="scroller">
+      <div class="canvas" id="canvas">
+        <div class="plot" id="plot"></div>
+        <div class="axis" id="axis"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tableWrap" hidden></div>
+  <div class="msg" id="msg">Loading booking data…</div>
+  <div class="tip" id="tip" role="status"></div>
 
 <script>
-  const POLL_INTERVAL_MS = 5000; // check the sheet every 5 seconds
-  let lastCount = 0;
+  const POLL_MS = 30000;   // the server caches upstream calls, so this stays cheap
+  const STEP = 5;
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str ?? '';
-    return div.innerHTML;
+  const $ = (id) => document.getElementById(id);
+  let showTable = false;
+  let latest = null;
+
+  const esc = (s) => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
+
+  // "Week 2 (06 Sep - 12 Sep)" reads as two lines on the axis.
+  function splitLabel(label) {
+    const m = String(label || '').match(/^(.*?)\s*(\(.*\))\s*$/);
+    return m ? [m[1], m[2]] : [label, ''];
   }
 
-  function render(bookings) {
-    const list = document.getElementById('list');
-    if (!bookings.length) {
-      list.innerHTML = '<div class="empty">Waiting for bookings...</div>';
+  const fmtLong = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleDateString('en-US',
+      { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+  function allBars(payload) {
+    return (payload.groups || []).flatMap((g) => g.bars.map((b) => ({ ...b, group: g.name })));
+  }
+
+  function niceMax(bars, target) {
+    const peak = Math.max(target, ...bars.map((b) => b.booked), 0);
+    return Math.max(STEP * 4, Math.ceil((peak + 1) / STEP) * STEP);
+  }
+
+  function render(payload) {
+    const bars = allBars(payload);
+    if (!bars.length) {
+      $('msg').textContent = 'No departures between today and ' + payload.seasonEnd + '.';
+      $('msg').hidden = false;
+      $('chart').hidden = true;
       return;
     }
-    list.innerHTML = bookings.map((b) => `
-      <div class="card">
-        <div>
-          <div class="name">${escapeHtml(b.participantName)}</div>
-          <div class="trip">${escapeHtml(b.tripName)}</div>
-          <span class="badge">${escapeHtml(b.status)}</span>
+    $('msg').hidden = true;
+    $('chart').hidden = showTable;
+
+    const max = niceMax(bars, payload.target);
+    const groups = payload.groups;
+
+    let chrome = '';
+    for (let v = 0; v <= max; v += STEP) {
+      chrome += `<div class="rule" style="bottom:${(v / max) * 100}%"><span class="tick">${v}</span></div>`;
+    }
+    chrome += `<div class="targetline" style="bottom:${(payload.target / max) * 100}%">
+                 <span class="targetflag">TARGET</span></div>`;
+
+    $('plot').innerHTML = chrome + `<div class="groups">${
+      groups.map((g) => `
+        <div class="group" style="flex:${g.bars.length} 1 0">
+          ${g.bars.map((b) => {
+            const cls = [
+              b.booked ? '' : 'zero',
+              b.capacity && b.booked >= b.capacity ? 'full' : '',
+              b.cancelled ? 'off' : '',
+            ].filter(Boolean).join(' ');
+            return `<div class="slot ${cls}" data-id="${esc(b.id)}">
+                      <div class="val">${b.booked}</div>
+                      <div class="bar" style="height:${(b.booked / max) * 100}%"></div>
+                      ${b.cancelled ? '<span class="stamp">CANCELLED</span>' : ''}
+                    </div>`;
+          }).join('')}
+        </div>`).join('')
+    }</div>`;
+
+    $('axis').innerHTML = groups.map((g) => `
+      <div class="group" style="flex:${g.bars.length} 1 0">
+        <div class="row">
+          ${g.bars.map((b) => {
+            const [wk, dates] = splitLabel(b.label);
+            return `<div class="cell">${esc(wk)}<br>${esc(dates)}</div>`;
+          }).join('')}
         </div>
-        <div class="time">${escapeHtml(b.time ? new Date(b.time).toLocaleTimeString() : '')}</div>
-      </div>
-    `).join('');
+        <div class="chip">${esc(g.name)}</div>
+      </div>`).join('');
+
+    $('canvas').style.minWidth = (bars.length * 96 + 92) + 'px';
+
+    bindTips(bars, payload);
+    renderTable(payload, bars);
   }
 
-  async function poll() {
+  function renderTable(payload, bars) {
+    $('tableWrap').innerHTML = `
+      <table>
+        <caption>Every bookable week from today through ${esc(payload.seasonEnd)}.
+          Target is ${payload.target} bookings per week. Total booked: ${payload.totalBooked}.</caption>
+        <thead><tr>
+          <th>Trip</th><th>Week</th><th class="n">Booked</th>
+          <th class="n">Capacity</th><th class="n">To target</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          ${bars.map((b) => {
+            const gap = payload.target - b.booked;
+            const status = b.cancelled ? 'Cancelled'
+              : b.bookingsUnavailable ? 'No booking record'
+              : gap <= 0 ? 'Target met' : 'Below target';
+            return `<tr>
+              <td>${esc(b.group)}</td>
+              <td>${esc(b.label)}</td>
+              <td class="n">${b.booked}</td>
+              <td class="n">${b.capacity ?? '—'}</td>
+              <td class="n">${gap > 0 ? gap : 0}</td>
+              <td>${status}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function bindTips(bars, payload) {
+    const byId = Object.fromEntries(bars.map((b) => [b.id, b]));
+    const tip = $('tip');
+    document.querySelectorAll('.slot').forEach((slot) => {
+      slot.addEventListener('mouseenter', () => {
+        const b = byId[slot.dataset.id];
+        if (!b) return;
+        const gap = payload.target - b.booked;
+        tip.innerHTML = `<b>${esc(b.group)}</b><br>
+          <span class="k">Week</span> ${esc(b.label)}<br>
+          <span class="k">Booked</span> ${b.booked}${b.capacity ? ' of ' + b.capacity + ' spots' : ''}<br>
+          ${b.cancelledCount ? `<span class="k">Cancelled on this trip</span> ${b.cancelledCount}<br>` : ''}
+          ${gap > 0 ? `<span class="k">To target</span> ${gap} more`
+                    : '<span class="k">Target met</span>'}
+          ${b.cancelled ? '<br><span class="k">This departure is cancelled</span>' : ''}
+          ${b.bookingsUnavailable ? '<br><span class="k">No booking record in WeTravel</span>' : ''}`;
+        tip.classList.add('on');
+      });
+      slot.addEventListener('mousemove', (e) => {
+        const pad = 14;
+        const r = tip.getBoundingClientRect();
+        let x = e.clientX + pad, y = e.clientY + pad;
+        if (x + r.width > innerWidth) x = e.clientX - r.width - pad;
+        if (y + r.height > innerHeight) y = e.clientY - r.height - pad;
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      });
+      slot.addEventListener('mouseleave', () => tip.classList.remove('on'));
+    });
+  }
+
+  async function load(force) {
+    $('canvas').classList.add('loading');
     try {
-      const res = await fetch('/api/bookings');
-      const bookings = await res.json();
-      document.getElementById('status').textContent =
-        `Connected, checking for new bookings every ${POLL_INTERVAL_MS / 1000}s`;
-      render(bookings);
-      lastCount = bookings.length;
+      const res = await fetch('/api/trips-progress' + (force ? '?refresh=1' : ''));
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'request failed');
+
+      latest = payload;
+      $('asof').textContent = fmtLong(payload.asOf);
+      const end = new Date(payload.seasonEnd);
+      $('range').textContent =
+        new Date().toLocaleDateString('en-US', { month: 'long' }) + ' to ' +
+        end.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) +
+        ' - Booking Data';
+      $('dot').className = 'dot' + (payload.stale ? ' warn' : '');
+      $('dot').title = payload.stale ? 'Showing last known data' : 'Live';
+      render(payload);
     } catch (err) {
-      document.getElementById('status').textContent = 'Could not reach the server, retrying...';
+      if (!latest) {
+        $('msg').textContent = 'Could not load booking data: ' + err.message;
+        $('msg').className = 'msg err';
+        $('msg').hidden = false;
+        $('chart').hidden = true;
+      }
+      $('dot').className = 'dot warn';
+    } finally {
+      $('canvas').classList.remove('loading');
     }
   }
 
-  poll();
-  setInterval(poll, POLL_INTERVAL_MS);
+  $('tableBtn').addEventListener('click', () => {
+    showTable = !showTable;
+    $('tableBtn').setAttribute('aria-pressed', String(showTable));
+    $('tableWrap').hidden = !showTable;
+    $('chart').hidden = showTable;
+  });
+  $('refreshBtn').addEventListener('click', () => load(true));
+
+  load(false);
+  setInterval(() => load(false), POLL_MS);
 </script>
 </body>
 </html>
