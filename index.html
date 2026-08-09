@@ -181,6 +181,9 @@
   tr.fresh td { color: var(--text); }
   tr.fresh td.n.b { color: var(--fresh-bright); }
   .tago { color: var(--fresh-bright); font-weight: 600; }
+  tr.cancelled-row { background: rgba(224,72,61,.14); box-shadow: inset 3px 0 0 var(--danger); }
+  tr.cancelled-row td { color: #f0b8b3; }
+  tr.cancelled-row td.n.b { color: #f0b8b3; }
 
   .notes { margin-top: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
   .notes b { color: var(--target); font-weight: 600; }
@@ -400,7 +403,11 @@
           const met = gap <= 0;
           const soldOut = w.capacity != null && w.booked >= w.capacity && w.booked > 0;
           const f = t.cancelled ? { count: 0 } : freshness(w);
-          const rowCls = [met ? 'met' : '', f.count ? 'fresh' : ''].filter(Boolean).join(' ');
+          const rowCls = [
+            !t.cancelled && met ? 'met' : '',
+            !t.cancelled && f.count ? 'fresh' : '',
+            t.cancelled ? 'cancelled-row' : '',
+          ].filter(Boolean).join(' ');
           const status = t.cancelled
             ? '<span class="tag">CANCELLED</span>'
             : soldOut ? 'Sold out' : met ? 'Target met' : 'Below target';
