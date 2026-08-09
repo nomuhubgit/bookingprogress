@@ -18,6 +18,8 @@
     --target: #ef8b3c;
     --danger: #e0483d;
     --danger-bg: #3a2230;
+    --fresh: #45cde0;
+    --fresh-dim: #1d5b6b;
     --text: #ffffff;
     --text-2: #b7c5d8;
     --text-3: #8698b4;
@@ -126,6 +128,41 @@
 
   .single .wlab { display: none; }
 
+  /* ---------- new booking, first 24h ---------- */
+  /* Quiet by default: an accent edge and one badge. Nothing moves except a slow
+     breath on the badge, so a wall display reads as calm until you look at it. */
+  .trip.fresh {
+    border-color: var(--fresh-dim);
+    box-shadow: inset 3px 0 0 var(--fresh), 0 0 0 1px rgba(69,205,224,.12);
+  }
+  .newbadge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(69,205,224,.14); color: var(--fresh);
+    border: 1px solid var(--fresh-dim);
+    font-size: 9px; font-weight: 700; letter-spacing: .07em;
+    padding: 2px 7px; border-radius: 20px; margin-left: 7px; vertical-align: 2px;
+    white-space: nowrap;
+  }
+  .newbadge::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fresh); animation: breathe 2.6s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+  @media (prefers-reduced-motion: reduce) {
+    .newbadge::before { animation: none; }
+  }
+
+  .wk.fresh .wlab, .wk.fresh .wdate { color: var(--fresh); }
+  .wpill {
+    font-size: 9px; font-weight: 700; color: var(--fresh);
+    background: rgba(69,205,224,.14); border-radius: 20px;
+    padding: 1px 6px; margin-left: 6px; white-space: nowrap;
+  }
+  .wk.fresh .fill { box-shadow: 0 0 0 1px var(--fresh); }
+  .wago { font-size: 9.5px; color: var(--fresh); opacity: .8; }
+
+  .stat .n.fresh { color: var(--fresh); }
+
   /* ---------- table + notes ---------- */
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   caption { text-align: left; padding: 4px 2px 10px; color: var(--text-2); font-size: 12px; }
@@ -160,6 +197,7 @@
       <div class="stat"><div class="n" id="sTrips">—</div><div class="l">Departures</div></div>
       <div class="stat"><div class="n" id="sWeeks">—</div><div class="l">Weeks</div></div>
       <div class="stat"><div class="n ok" id="sMet">—</div><div class="l">At target</div></div>
+      <div class="stat" id="sNewWrap" hidden><div class="n fresh" id="sNew">—</div><div class="l">New in 24h</div></div>
     </div>
     <div class="tools">
       <span class="dot" id="dot" title="Live"></span>
@@ -173,6 +211,7 @@
     <span><i style="background:#56b98a"></i>Sold out</span>
     <span><i style="background:#16294a;border:1px solid #34517c"></i>Empty</span>
     <span><i style="background:#ef8b3c;width:3px"></i>Target marker</span>
+    <span><i style="background:#45cde0"></i>New booking (last 24h)</span>
   </div>
 
   <div id="board"></div>
@@ -201,6 +240,36 @@
   // "Week 2 (06 Sep - 12 Sep)" -> "Week 2"; the dates are shown separately.
   const weekName = (label) => String(label || '').replace(/\s*\(.*\)\s*$/, '').trim() || 'Week';
 
+  // A booking stays highlighted for exactly 24h from the moment it was placed:
+  // one taken at 2pm stops being new at 2pm the next day. Computed in the browser
+  // against live time, so it expires on the minute rather than on the poll.
+  const NEW_MS = 24 * 60 * 60 * 1000;
+  // Lets the highlight be seen on demand, since real bookings are days old.
+  const PREVIEW = new URLSearchParams(location.search).get('preview') === 'new';
+
+  function freshness(week) {
+    const now = Date.now();
+    let count = 0;
+    let newest = 0;
+    for (const r of week.recent || []) {
+      const at = Date.parse(r.at);
+      if (!Number.isFinite(at)) continue;
+      if (now - at < NEW_MS) {
+        count += r.count || 0;
+        if (at > newest) newest = at;
+      }
+    }
+    return { count, newest };
+  }
+
+  function ago(ms) {
+    const mins = Math.floor((Date.now() - ms) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    return hrs + 'h ago';
+  }
+
   function meter(w, target) {
     // The track runs to whichever is larger, so a capacity below target visibly
     // falls short of the marker instead of quietly rescaling to look full.
@@ -209,28 +278,40 @@
     const soldOut = w.capacity != null && w.booked >= w.capacity && w.booked > 0;
     const state = w.booked === 0 ? 'none' : soldOut ? 'full' : '';
     const tickPct = Math.min(100, (target / scale) * 100);
+    const f = freshness(w);
 
     return `
-      <div class="wk">
-        <div><span class="wlab">${esc(weekName(w.label))}</span><span class="wdate">${esc(range(w.start, w.end))}</span></div>
+      <div class="wk ${f.count ? 'fresh' : ''}">
+        <div>
+          <span class="wlab">${esc(weekName(w.label))}</span><span class="wdate">${esc(range(w.start, w.end))}</span>
+          ${f.count ? `<span class="wpill">+${f.count}</span>` : ''}
+        </div>
         <div class="wnum ${state}">${w.booked}<span class="of"> / ${w.capacity ?? target}</span></div>
         <div class="track">
           <div class="fill ${state}" style="width:${pct}%"></div>
           <div class="tick" style="left:calc(${tickPct}% - 1px)" title="Target ${target}"></div>
         </div>
+        ${f.count ? `<div class="cap wago">New booking ${esc(ago(f.newest))}</div>` : ''}
       </div>`;
   }
 
   function tripCard(t, target) {
     const soldOut = t.totalCapacity != null && t.totalBooked >= t.totalCapacity && t.totalBooked > 0;
-    const cls = [t.cancelled ? 'cancelled' : '', soldOut ? 'done' : ''].filter(Boolean).join(' ');
+    const newCount = t.weeks.reduce((sum, w) => sum + freshness(w).count, 0);
+    const cls = [
+      t.cancelled ? 'cancelled' : '',
+      soldOut ? 'done' : '',
+      newCount && !t.cancelled ? 'fresh' : '',
+    ].filter(Boolean).join(' ');
     const numCls = t.totalBooked === 0 ? 'none' : soldOut ? 'full' : '';
     const many = t.weeks.length > 1;
 
     return `
       <div class="trip ${cls}">
         <div class="thead">
-          <div class="tname">${esc(t.name)}${t.cancelled ? '<span class="tag">CANCELLED</span>' : ''}</div>
+          <div class="tname">${esc(t.name)}${t.cancelled ? '<span class="tag">CANCELLED</span>' : ''}${
+            newCount && !t.cancelled
+              ? `<span class="newbadge">${newCount} NEW</span>` : ''}</div>
           <div class="tnum">
             <div class="b ${numCls}">${t.totalBooked}</div>
             <div class="s">booked</div>
@@ -279,6 +360,13 @@
     $('sWeeks').textContent = p.weekCount;
     $('sMet').textContent = p.weeksAtTarget;
 
+    // The counter only exists while something is actually new, so a quiet day
+    // shows a quiet header instead of a permanent zero.
+    const newTotal = trips.reduce((sum, t) =>
+      sum + (t.cancelled ? 0 : t.weeks.reduce((s, w) => s + freshness(w).count, 0)), 0);
+    $('sNew').textContent = newTotal;
+    $('sNewWrap').hidden = newTotal === 0;
+
     $('notes').innerHTML = (p.warnings || []).length
       ? '<b>Needs attention in WeTravel:</b> ' + p.warnings.map((w) => esc(w.title) + ' — ' + esc(w.issue)).join(' · ')
       : '';
@@ -313,12 +401,24 @@
       </table>`;
   }
 
+  // ?preview=new backdates a couple of bookings so the highlight can be judged
+  // on demand. It only ever runs from that URL, never on the live board.
+  function previewNew(p) {
+    const targets = (p.trips || []).filter((t) => !t.cancelled).slice(0, 2);
+    targets.forEach((t, i) => {
+      const week = t.weeks[t.weeks.length > 1 ? 1 : 0];
+      if (!week) return;
+      week.recent = [{ at: new Date(Date.now() - (i ? 5 * 3600e3 : 12 * 60e3)).toISOString(), count: i ? 1 : 2 }];
+    });
+  }
+
   async function load(force) {
     try {
       const res = await fetch('/api/trips-progress' + (force ? '?refresh=1' : ''));
       const p = await res.json();
       if (!res.ok) throw new Error(p.error || 'request failed');
 
+      if (PREVIEW) previewNew(p);
       latest = p;
       $('asof').textContent = fmtStamp(p.asOf);
       $('range').textContent = D(p.today).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })
@@ -346,6 +446,9 @@
 
   load(false);
   setInterval(() => load(false), POLL_MS);
+  // Re-render between fetches so a highlight lapses at its own 24h mark and the
+  // "3h ago" text stays honest, without waiting on the server cache.
+  setInterval(() => { if (latest) render(latest); }, 20000);
 </script>
 </body>
 </html>

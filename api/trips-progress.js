@@ -2,7 +2,11 @@ const { apiGet, mapWithConcurrency } = require('./wetravel');
 
 const SEASON_END = process.env.SEASON_END || '2026-12-31';
 const TARGET = Number(process.env.BOOKING_TARGET || 10);
-const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 120000);
+const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 60000);
+
+// Sent a little wider than the 24h highlight so the browser can expire each
+// booking on its own exact minute rather than waiting for the next poll.
+const RECENT_WINDOW_MS = 26 * 60 * 60 * 1000;
 
 // Corporate/charter departures aren't retail sales, so they'd distort the target.
 // Also where a departure goes once it's been called off.
@@ -113,15 +117,35 @@ async function loadTrip(trip) {
   ]);
 
   const tally = new Map();
+  const recentByWeek = new Map();
+  const recentNoWeek = [];
+  const nowMs = Date.now();
   let activeTotal = 0;
   let cancelledTotal = 0;
 
   for (const order of orders || []) {
     activeTotal += order.active_count || 0;
     cancelledTotal += order.cancelled_count || 0;
-    for (const pkg of order.packages || []) {
+
+    const placedAt = Date.parse(order.created_at);
+    const isRecent = Number.isFinite(placedAt) &&
+      placedAt <= nowMs && nowMs - placedAt < RECENT_WINDOW_MS;
+
+    const pkgs = order.packages || [];
+    for (const pkg of pkgs) {
       const key = tidy(pkg.name);
-      tally.set(key, (tally.get(key) || 0) + (pkg.quantity || 1));
+      const seats = pkg.quantity || 1;
+      tally.set(key, (tally.get(key) || 0) + seats);
+      if (isRecent && seats > 0) {
+        if (!recentByWeek.has(key)) recentByWeek.set(key, []);
+        recentByWeek.get(key).push({ at: order.created_at, count: seats });
+      }
+    }
+
+    // Cancellations come through with no package at all, so only a live order
+    // without one is a real booking waiting to be attributed to its week.
+    if (!pkgs.length && isRecent && (order.active_count || 0) > 0) {
+      recentNoWeek.push({ at: order.created_at, count: order.active_count });
     }
   }
 
@@ -132,9 +156,14 @@ async function loadTrip(trip) {
       label,
       booked: tally.get(label) || 0,
       capacity: pkg.quantity == null ? null : Number(pkg.quantity),
+      recent: recentByWeek.get(label) || [],
       ...weekDates(label, trip),
     };
   });
+
+  if (recentNoWeek.length && weeks.length === 1) {
+    weeks[0].recent = weeks[0].recent.concat(recentNoWeek);
+  }
 
   // Orders that never named a package are still real people. One week leaves only
   // one place they can go; several means say so rather than guess.
@@ -190,6 +219,7 @@ async function build() {
         end: w.end,
         booked: w.booked,
         capacity: w.capacity,
+        recent: w.recent || [],
       }))
       .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
