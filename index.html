@@ -7,46 +7,49 @@
 <style>
   :root {
     --navy: #1b3358;
-    --navy-deep: #16294a;
+    --navy-deep: #142744;
+    --line: #33507d;
     --cream: #dedcc6;
     --bar: #f5b935;
-    --bar-full: #6cc08b;
+    --bar-full: #63b98a;
+    --bar-low: #e0723f;
     --target: #ef8b3c;
     --ink: #2c3033;
-    --ink-soft: #5d6470;
+    --ink-soft: #626976;
     --grid: #c9c6b0;
     --yellow: #f2b233;
-    --gutter: 46px;
-    --slot: 96px;
+    --gutter: 44px;
+    --slot: 72px;
   }
 
   * { box-sizing: border-box; }
 
   body {
-    margin: 0;
-    padding: 18px;
-    background: var(--navy);
-    color: #fff;
+    margin: 0; padding: 16px 18px 22px;
+    background: var(--navy); color: #fff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
 
-  .head { display: flex; align-items: flex-start; gap: 26px; padding: 2px 4px 14px; flex-wrap: wrap; }
+  /* ---------- header ---------- */
+  .head { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding-bottom: 14px; }
   .brand {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 30px; font-weight: 800; color: var(--yellow);
-    letter-spacing: -0.01em; white-space: nowrap;
+    display: flex; align-items: center; gap: 9px;
+    font-size: 25px; font-weight: 800; color: var(--yellow); white-space: nowrap;
   }
-  .brand svg { width: 34px; height: 34px; flex: none; }
-  .titles { padding-top: 3px; }
-  .titles h1 { margin: 0; font-size: 21px; font-weight: 700; }
-  .asof { margin-top: 3px; font-size: 12px; font-weight: 600; color: #cdd6e4; }
-  .asof b { color: var(--yellow); font-weight: 700; }
+  .brand svg { width: 29px; height: 29px; flex: none; }
+  .titles h1 { margin: 0; font-size: 17px; font-weight: 700; }
+  .asof { margin-top: 2px; font-size: 11.5px; color: #b9c6d8; }
+  .asof b { color: var(--yellow); font-weight: 600; }
   .spacer { flex: 1; }
 
-  .tools { display: flex; align-items: center; gap: 8px; padding-top: 5px; }
+  .stats { display: flex; gap: 26px; align-items: baseline; }
+  .stat .n { font-size: 25px; font-weight: 700; line-height: 1; }
+  .stat .l { font-size: 10.5px; color: #9fb0c8; margin-top: 4px; letter-spacing: .02em; }
+
+  .tools { display: flex; align-items: center; gap: 7px; }
   .btn {
-    background: transparent; color: #cdd6e4; border: 1px solid #3d5680;
+    background: transparent; color: #c3d0e2; border: 1px solid var(--line);
     border-radius: 7px; padding: 6px 11px; font: inherit; font-size: 12px; cursor: pointer;
   }
   .btn:hover { background: var(--navy-deep); color: #fff; }
@@ -54,82 +57,97 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #58c493; flex: none; }
   .dot.warn { background: var(--target); }
 
+  /* ---------- chart ---------- */
   .scroller { overflow-x: auto; overflow-y: hidden; }
-  .canvas { min-width: 100%; transition: opacity .18s ease; }
-  .canvas.loading { opacity: .45; }
+  .canvas { transition: opacity .18s ease; }
+  .canvas.loading { opacity: .5; }
 
   .plot {
-    position: relative; height: 400px; background: var(--cream);
-    padding: 30px var(--gutter) 0; border-radius: 2px;
+    position: relative; height: 340px; background: var(--cream);
+    padding: 28px var(--gutter) 0; border-radius: 3px 3px 0 0;
   }
   .rule { position: absolute; left: var(--gutter); right: var(--gutter); height: 1px; background: var(--grid); }
   .rule .tick {
-    position: absolute; left: calc(var(--gutter) * -1); top: -8px; width: 32px;
-    text-align: right; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
+    position: absolute; left: calc(var(--gutter) * -1); top: -8px; width: 30px;
+    text-align: right; font-size: 11.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
   }
   .targetline { position: absolute; left: 0; right: 0; height: 2px; background: var(--target); }
   .targetflag {
-    position: absolute; left: 6px; top: -9px; background: var(--navy); color: #fff;
-    font-size: 8.5px; font-weight: 700; letter-spacing: .09em; padding: 3px 7px; border-radius: 3px;
+    position: absolute; left: 5px; top: -9px; background: var(--navy); color: #fff;
+    font-size: 8px; font-weight: 700; letter-spacing: .09em; padding: 3px 7px; border-radius: 3px;
   }
 
-  .groups { position: relative; display: flex; height: 100%; align-items: flex-end; }
-  .group { display: flex; position: relative; min-width: 0; }
-  .group + .group::before {
-    content: ""; position: absolute; left: 0; top: -30px; bottom: 0; width: 1px; background: var(--grid);
-  }
-
+  /* height chain must stay definite all the way down or the bars collapse */
+  .bars { position: relative; display: flex; height: 100%; }
   .slot {
     flex: 1 1 0; min-width: var(--slot); height: 100%;
     display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
     position: relative;
   }
-  .val { font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1; margin-bottom: 6px; }
-  .slot.zero .val { color: var(--ink-soft); }
-  .bar { width: 22px; background: var(--bar); border-radius: 4px 4px 0 0; transition: height .3s ease; }
+  .val { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1; margin-bottom: 5px; }
+  .slot.zero .val { color: #9a9a8c; }
+  .bar {
+    flex: 0 0 auto; width: 20px; min-height: 2px;
+    background: var(--bar); border-radius: 4px 4px 0 0; transition: height .3s ease;
+  }
   .slot.full .bar { background: var(--bar-full); }
-  .slot:hover .bar { filter: brightness(1.07); }
-  .slot.off .bar { opacity: .3; }
+  .slot.cancelled .bar { background: var(--bar-low); opacity: .45; }
+  .slot:hover .bar { filter: brightness(1.08); }
+  .slot:hover::before {
+    content: ""; position: absolute; inset: 0; background: rgba(27,51,88,.05);
+  }
 
   .stamp {
-    position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%) rotate(-11deg);
-    background: var(--navy); color: #fff; font-size: 8.5px; font-weight: 700;
-    letter-spacing: .1em; padding: 4px 9px; border-radius: 3px; white-space: nowrap;
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%) rotate(-10deg);
+    background: var(--navy); color: #fff; font-size: 8px; font-weight: 700;
+    letter-spacing: .09em; padding: 3px 7px; border-radius: 3px; white-space: nowrap;
   }
 
-  .axis { display: flex; padding: 0 var(--gutter); }
-  .axis .group { flex-direction: column; }
-  .axis .row { display: flex; }
-  .axis .cell {
-    flex: 1 1 0; min-width: var(--slot); padding: 9px 5px 10px;
-    text-align: center; font-size: 10.5px; line-height: 1.35; color: #dfe6f0;
+  /* ---------- axis ---------- */
+  .axis { display: flex; padding: 0 var(--gutter); background: var(--navy-deep); }
+  .acell {
+    flex: 1 1 0; min-width: var(--slot); padding: 8px 5px 9px; text-align: center;
+    border-right: 1px solid rgba(255,255,255,.05);
   }
-  .axis .group + .group::before { display: none; }
-  .chip {
-    align-self: center; margin: 2px auto 0; max-width: 96%;
-    background: var(--navy-deep); border: 1px solid #33507d; color: #fff;
-    font-size: 11px; font-weight: 700; letter-spacing: .03em;
-    padding: 6px 14px; border-radius: 3px; text-align: center;
+  .acell:last-child { border-right: 0; }
+  .acell .t {
+    font-size: 10px; font-weight: 700; color: #fff; line-height: 1.25;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
   }
+  .acell .d { font-size: 9.5px; color: #93a5bf; margin-top: 3px; line-height: 1.2; }
 
+  .months { display: flex; padding: 0 var(--gutter); }
+  .mcell {
+    padding: 7px 6px 8px; text-align: center;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .11em; color: var(--yellow);
+    border-right: 1px solid var(--line); border-top: 1px solid var(--line);
+  }
+  .mcell:last-child { border-right: 0; }
+
+  /* ---------- tooltip ---------- */
   .tip {
     position: fixed; z-index: 40; pointer-events: none; opacity: 0;
-    background: #0f1f38; border: 1px solid #35507a; border-radius: 8px;
+    background: #0d1c33; border: 1px solid var(--line); border-radius: 8px;
     padding: 9px 11px; font-size: 12px; line-height: 1.5; color: #eaf0f8;
-    box-shadow: 0 8px 22px rgba(0,0,0,.4); max-width: 280px; transition: opacity .12s;
+    box-shadow: 0 10px 26px rgba(0,0,0,.45); max-width: 270px; transition: opacity .12s;
   }
   .tip.on { opacity: 1; }
   .tip b { color: var(--yellow); }
-  .tip .k { color: #9fb0c8; }
+  .tip .k { color: #93a5bf; }
 
-  table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 13px; }
-  caption { text-align: left; padding: 6px 2px 10px; color: #cdd6e4; font-size: 12px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2b4570; }
-  th { color: #9fb0c8; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  /* ---------- table + notes ---------- */
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; font-size: 13px; }
+  caption { text-align: left; padding: 8px 2px 10px; color: #b9c6d8; font-size: 12px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #26405f; }
+  th { color: #93a5bf; font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
   td.n { text-align: right; font-variant-numeric: tabular-nums; }
-  [hidden] { display: none !important; }
+  tr.met td.n.b { color: var(--bar-full); font-weight: 700; }
 
-  .msg { padding: 26px 4px; color: #cdd6e4; font-size: 14px; }
+  .notes { margin-top: 12px; font-size: 11.5px; color: #93a5bf; line-height: 1.6; }
+  .notes b { color: var(--target); font-weight: 600; }
+  [hidden] { display: none !important; }
+  .msg { padding: 24px 4px; color: #b9c6d8; font-size: 14px; }
   .msg.err { color: #ffbfa8; }
 </style>
 </head>
@@ -141,12 +159,17 @@
     </div>
     <div class="titles">
       <h1 id="range">Booking Data</h1>
-      <div class="asof">As of: <b id="asof">—</b></div>
+      <div class="asof">As of <b id="asof">—</b></div>
     </div>
     <div class="spacer"></div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="sBooked">—</div><div class="l">Booked</div></div>
+      <div class="stat"><div class="n" id="sWeeks">—</div><div class="l">Weeks ahead</div></div>
+      <div class="stat"><div class="n" id="sMet">—</div><div class="l">At target</div></div>
+    </div>
     <div class="tools">
       <span class="dot" id="dot" title="Live"></span>
-      <button class="btn" id="tableBtn" aria-pressed="false">Table view</button>
+      <button class="btn" id="tableBtn" aria-pressed="false">Table</button>
       <button class="btn" id="refreshBtn">Refresh</button>
     </div>
   </div>
@@ -156,155 +179,162 @@
       <div class="canvas" id="canvas">
         <div class="plot" id="plot"></div>
         <div class="axis" id="axis"></div>
+        <div class="months" id="months"></div>
       </div>
     </div>
   </div>
 
   <div id="tableWrap" hidden></div>
+  <div class="notes" id="notes"></div>
   <div class="msg" id="msg">Loading booking data…</div>
   <div class="tip" id="tip" role="status"></div>
 
 <script>
-  const POLL_MS = 30000;   // the server caches upstream calls, so this stays cheap
+  const POLL_MS = 30000;   // server caches upstream calls, so this stays cheap
   const STEP = 5;
+  const SLOT_PX = 72;
 
   const $ = (id) => document.getElementById(id);
+  const esc = (s) => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
   let showTable = false;
   let latest = null;
 
-  const esc = (s) => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
-
-  // "Week 2 (06 Sep - 12 Sep)" reads as two lines on the axis.
-  function splitLabel(label) {
-    const m = String(label || '').match(/^(.*?)\s*(\(.*\))\s*$/);
-    return m ? [m[1], m[2]] : [label, ''];
-  }
-
-  const fmtLong = (iso) => {
+  const D = (iso) => new Date(iso + 'T00:00:00Z');
+  const fmtRange = (a, b) => {
+    const o = { day: 'numeric', month: 'short', timeZone: 'UTC' };
+    const s = D(a).toLocaleDateString('en-GB', o);
+    const e = D(b).toLocaleDateString('en-GB', o);
+    return s + ' – ' + e;
+  };
+  const fmtStamp = (iso) => {
     const d = new Date(iso);
     return isNaN(d) ? '—' : d.toLocaleDateString('en-US',
-      { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) +
+      ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   };
-
-  function allBars(payload) {
-    return (payload.groups || []).flatMap((g) => g.bars.map((b) => ({ ...b, group: g.name })));
-  }
 
   function niceMax(bars, target) {
     const peak = Math.max(target, ...bars.map((b) => b.booked), 0);
-    return Math.max(STEP * 4, Math.ceil((peak + 1) / STEP) * STEP);
+    return Math.max(STEP * 3, Math.ceil((peak + 1) / STEP) * STEP);
   }
 
-  function render(payload) {
-    const bars = allBars(payload);
+  // consecutive bars sharing a month collapse into one band label
+  function monthBands(bars) {
+    const bands = [];
+    for (const b of bars) {
+      const key = (b.start || '').slice(0, 7);
+      const last = bands[bands.length - 1];
+      if (last && last.key === key) last.count++;
+      else bands.push({ key, count: 1, label: D(b.start).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }) });
+    }
+    return bands;
+  }
+
+  function render(p) {
+    const bars = p.bars || [];
     if (!bars.length) {
-      $('msg').textContent = 'No departures between today and ' + payload.seasonEnd + '.';
-      $('msg').hidden = false;
-      $('chart').hidden = true;
+      $('msg').textContent = 'No departures between today and ' + p.seasonEnd + '.';
+      $('msg').hidden = false; $('chart').hidden = true;
       return;
     }
     $('msg').hidden = true;
     $('chart').hidden = showTable;
 
-    const max = niceMax(bars, payload.target);
-    const groups = payload.groups;
+    const max = niceMax(bars, p.target);
 
     let chrome = '';
     for (let v = 0; v <= max; v += STEP) {
       chrome += `<div class="rule" style="bottom:${(v / max) * 100}%"><span class="tick">${v}</span></div>`;
     }
-    chrome += `<div class="targetline" style="bottom:${(payload.target / max) * 100}%">
-                 <span class="targetflag">TARGET</span></div>`;
+    chrome += `<div class="targetline" style="bottom:${(p.target / max) * 100}%">
+                 <span class="targetflag">TARGET ${p.target}</span></div>`;
 
-    $('plot').innerHTML = chrome + `<div class="groups">${
-      groups.map((g) => `
-        <div class="group" style="flex:${g.bars.length} 1 0">
-          ${g.bars.map((b) => {
-            const cls = [
-              b.booked ? '' : 'zero',
-              b.capacity && b.booked >= b.capacity ? 'full' : '',
-              b.cancelled ? 'off' : '',
-            ].filter(Boolean).join(' ');
-            return `<div class="slot ${cls}" data-id="${esc(b.id)}">
-                      <div class="val">${b.booked}</div>
-                      <div class="bar" style="height:${(b.booked / max) * 100}%"></div>
-                      ${b.cancelled ? '<span class="stamp">CANCELLED</span>' : ''}
-                    </div>`;
-          }).join('')}
-        </div>`).join('')
-    }</div>`;
+    $('plot').innerHTML = chrome + '<div class="bars">' + bars.map((b) => {
+      const cls = [
+        b.booked ? '' : 'zero',
+        b.capacity && b.booked >= b.capacity ? 'full' : '',
+        b.cancelled ? 'cancelled' : '',
+      ].filter(Boolean).join(' ');
+      return `<div class="slot ${cls}" data-id="${esc(b.id)}">
+                <div class="val">${b.booked}</div>
+                <div class="bar" style="height:${(b.booked / max) * 100}%"></div>
+                ${b.cancelled ? '<span class="stamp">CANCELLED</span>' : ''}
+              </div>`;
+    }).join('') + '</div>';
 
-    $('axis').innerHTML = groups.map((g) => `
-      <div class="group" style="flex:${g.bars.length} 1 0">
-        <div class="row">
-          ${g.bars.map((b) => {
-            const [wk, dates] = splitLabel(b.label);
-            return `<div class="cell">${esc(wk)}<br>${esc(dates)}</div>`;
-          }).join('')}
-        </div>
-        <div class="chip">${esc(g.name)}</div>
+    $('axis').innerHTML = bars.map((b) => `
+      <div class="acell">
+        <div class="t" title="${esc(b.trip)}">${esc(b.trip)}</div>
+        <div class="d">${esc(fmtRange(b.start, b.end))}</div>
       </div>`).join('');
 
-    $('canvas').style.minWidth = (bars.length * 96 + 92) + 'px';
+    $('months').innerHTML = monthBands(bars)
+      .map((m) => `<div class="mcell" style="flex:${m.count} 1 0;min-width:${m.count * SLOT_PX}px">${esc(m.label)}</div>`)
+      .join('');
 
-    bindTips(bars, payload);
-    renderTable(payload, bars);
+    $('canvas').style.minWidth = (bars.length * SLOT_PX + 2 * 44) + 'px';
+
+    $('sBooked').textContent = p.totalBooked;
+    $('sWeeks').textContent = bars.length;
+    $('sMet').textContent = bars.filter((b) => b.booked >= p.target).length;
+
+    $('notes').innerHTML = (p.warnings || []).length
+      ? '<b>Needs attention in WeTravel:</b> ' + p.warnings
+          .map((w) => esc(w.title) + ' — ' + esc(w.issue)).join(' · ')
+      : '';
+
+    bindTips(bars, p);
+    renderTable(bars, p);
   }
 
-  function renderTable(payload, bars) {
+  function renderTable(bars, p) {
     $('tableWrap').innerHTML = `
       <table>
-        <caption>Every bookable week from today through ${esc(payload.seasonEnd)}.
-          Target is ${payload.target} bookings per week. Total booked: ${payload.totalBooked}.</caption>
+        <caption>Every bookable week from today through ${esc(p.seasonEnd)}, in date order.
+          Target is ${p.target} per week. Total booked: ${p.totalBooked}.</caption>
         <thead><tr>
-          <th>Trip</th><th>Week</th><th class="n">Booked</th>
-          <th class="n">Capacity</th><th class="n">To target</th><th>Status</th>
+          <th>Dates</th><th>Trip</th><th>Week</th>
+          <th class="n">Booked</th><th class="n">Capacity</th><th class="n">To target</th><th>Status</th>
         </tr></thead>
-        <tbody>
-          ${bars.map((b) => {
-            const gap = payload.target - b.booked;
-            const status = b.cancelled ? 'Cancelled'
-              : b.bookingsUnavailable ? 'No booking record'
-              : gap <= 0 ? 'Target met' : 'Below target';
-            return `<tr>
-              <td>${esc(b.group)}</td>
-              <td>${esc(b.label)}</td>
-              <td class="n">${b.booked}</td>
-              <td class="n">${b.capacity ?? '—'}</td>
-              <td class="n">${gap > 0 ? gap : 0}</td>
-              <td>${status}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <tbody>${bars.map((b) => {
+          const gap = p.target - b.booked;
+          const met = gap <= 0;
+          return `<tr class="${met ? 'met' : ''}">
+            <td>${esc(fmtRange(b.start, b.end))}</td>
+            <td>${esc(b.trip)}</td>
+            <td>${esc(b.label)}</td>
+            <td class="n b">${b.booked}</td>
+            <td class="n">${b.capacity ?? '—'}</td>
+            <td class="n">${met ? 0 : gap}</td>
+            <td>${b.cancelled ? 'Cancelled' : met ? 'Target met' : 'Below target'}</td>
+          </tr>`;
+        }).join('')}</tbody>
       </table>`;
   }
 
-  function bindTips(bars, payload) {
+  function bindTips(bars, p) {
     const byId = Object.fromEntries(bars.map((b) => [b.id, b]));
     const tip = $('tip');
     document.querySelectorAll('.slot').forEach((slot) => {
       slot.addEventListener('mouseenter', () => {
         const b = byId[slot.dataset.id];
         if (!b) return;
-        const gap = payload.target - b.booked;
-        tip.innerHTML = `<b>${esc(b.group)}</b><br>
-          <span class="k">Week</span> ${esc(b.label)}<br>
+        const gap = p.target - b.booked;
+        tip.innerHTML = `<b>${esc(b.trip)}</b><br>
+          <span class="k">${esc(b.label)}</span><br>
+          <span class="k">Dates</span> ${esc(fmtRange(b.start, b.end))}<br>
           <span class="k">Booked</span> ${b.booked}${b.capacity ? ' of ' + b.capacity + ' spots' : ''}<br>
           ${b.cancelledCount ? `<span class="k">Cancelled on this trip</span> ${b.cancelledCount}<br>` : ''}
-          ${gap > 0 ? `<span class="k">To target</span> ${gap} more`
-                    : '<span class="k">Target met</span>'}
-          ${b.cancelled ? '<br><span class="k">This departure is cancelled</span>' : ''}
-          ${b.bookingsUnavailable ? '<br><span class="k">No booking record in WeTravel</span>' : ''}`;
+          ${gap > 0 ? `<span class="k">To target</span> ${gap} more` : '<span class="k">Target met</span>'}
+          ${b.cancelled ? '<br><span class="k">This departure is cancelled</span>' : ''}`;
         tip.classList.add('on');
       });
       slot.addEventListener('mousemove', (e) => {
-        const pad = 14;
-        const r = tip.getBoundingClientRect();
+        const pad = 14, r = tip.getBoundingClientRect();
         let x = e.clientX + pad, y = e.clientY + pad;
         if (x + r.width > innerWidth) x = e.clientX - r.width - pad;
         if (y + r.height > innerHeight) y = e.clientY - r.height - pad;
-        tip.style.left = x + 'px';
-        tip.style.top = y + 'px';
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
       });
       slot.addEventListener('mouseleave', () => tip.classList.remove('on'));
     });
@@ -314,25 +344,21 @@
     $('canvas').classList.add('loading');
     try {
       const res = await fetch('/api/trips-progress' + (force ? '?refresh=1' : ''));
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload.error || 'request failed');
+      const p = await res.json();
+      if (!res.ok) throw new Error(p.error || 'request failed');
 
-      latest = payload;
-      $('asof').textContent = fmtLong(payload.asOf);
-      const end = new Date(payload.seasonEnd);
-      $('range').textContent =
-        new Date().toLocaleDateString('en-US', { month: 'long' }) + ' to ' +
-        end.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) +
-        ' - Booking Data';
-      $('dot').className = 'dot' + (payload.stale ? ' warn' : '');
-      $('dot').title = payload.stale ? 'Showing last known data' : 'Live';
-      render(payload);
+      latest = p;
+      $('asof').textContent = fmtStamp(p.asOf);
+      $('range').textContent = D(p.today).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }) +
+        ' to ' + D(p.seasonEnd).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) +
+        ' — Booking Data';
+      $('dot').className = 'dot' + (p.stale ? ' warn' : '');
+      $('dot').title = p.stale ? 'Showing last known data' : 'Live';
+      render(p);
     } catch (err) {
       if (!latest) {
         $('msg').textContent = 'Could not load booking data: ' + err.message;
-        $('msg').className = 'msg err';
-        $('msg').hidden = false;
-        $('chart').hidden = true;
+        $('msg').className = 'msg err'; $('msg').hidden = false; $('chart').hidden = true;
       }
       $('dot').className = 'dot warn';
     } finally {

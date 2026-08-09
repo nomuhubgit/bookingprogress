@@ -5,13 +5,13 @@ const TARGET = Number(process.env.BOOKING_TARGET || 10);
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 120000);
 
 // Corporate/charter departures aren't retail sales, so they'd distort the target.
-// Also the place to drop a departure once it's been called off.
+// Also where a departure goes once it's been called off.
 const EXCLUDED = new Set(
   (process.env.EXCLUDED_TRIP_UUIDS || '8612103268,9638755524')
     .split(',').map((s) => s.trim()).filter(Boolean)
 );
 
-// Departures that still belong on the board, stamped CANCELLED.
+// Departures that stay on the board, stamped CANCELLED.
 const CANCELLED = new Set(
   (process.env.CANCELLED_TRIP_UUIDS || '')
     .split(',').map((s) => s.trim()).filter(Boolean)
@@ -19,21 +19,59 @@ const CANCELLED = new Set(
 
 let cache = { at: 0, payload: null };
 
-// "ZNZ | Explore - /16 Aug - 22 Aug" is one product; the date tail is the week,
-// which the package name already carries. Any trailing note is kept so an old
-// copy doesn't silently merge into the live product's bars.
-function productName(title) {
-  const raw = String(title || '').trim();
-  const m = raw.match(/^(.*?)\s*-?\s*\/\s*\d{1,2}\s+[A-Za-z]+\.?\s*-\s*\d{1,2}\s+[A-Za-z]+\.?\s*(\(.*\))?\s*$/);
-  if (!m) return raw;
-  return [m[1].trim(), (m[2] || '').trim()].filter(Boolean).join(' ');
-}
+const MONTHS = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
 
 const tidy = (s) => String(s || '').replace(/\s+/g, ' ').replace(/\s+\)/g, ')').trim();
+
+// Trip titles carry the departure dates and a season stamp, both of which the
+// chart shows elsewhere. Strip them so the label is just the product.
+function productName(title) {
+  let name = String(title || '').trim();
+  name = name.replace(/\s*-?\s*\/\s*\d{1,2}\s+[A-Za-z]+\.?\s*[-–]\s*\d{1,2}\s+[A-Za-z]+\.?\s*/g, ' ');
+  name = name.replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*20\d{2}\b/gi, ' ');
+  name = name.replace(/\b20\d{2}\b/g, ' ');
+  name = name.replace(/\s*[-–|]\s*$/, '').replace(/^\s*[-–|]\s*/, '');
+  name = name.replace(/\s*[-–]\s*/g, ' | ').replace(/\s*\|\s*/g, ' | ');
+  name = name.replace(/\s+/g, ' ').trim();
+  return name || String(title || '').trim();
+}
 
 function dayKey(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
+// "Week 2 (06 Sep - 12 Sep)" carries no year, so anchor it to the trip it belongs
+// to and roll forward when the range crosses New Year.
+function weekDates(packageName, trip) {
+  const m = String(packageName || '')
+    .match(/\((\d{1,2})\s*([A-Za-z]{3,})\.?\s*[-–]\s*(\d{1,2})\s*([A-Za-z]{3,})\.?\s*\)/);
+  const tripStart = new Date(trip.start_date);
+  if (!m || Number.isNaN(tripStart.getTime())) {
+    return { start: dayKey(trip.start_date), end: dayKey(trip.end_date) || dayKey(trip.start_date) };
+  }
+
+  const [, d1, mo1, d2, mo2] = m;
+  const m1 = MONTHS[mo1.slice(0, 3).toLowerCase()];
+  const m2 = MONTHS[mo2.slice(0, 3).toLowerCase()];
+  if (m1 == null || m2 == null) {
+    return { start: dayKey(trip.start_date), end: dayKey(trip.end_date) || dayKey(trip.start_date) };
+  }
+
+  let year = tripStart.getUTCFullYear();
+  let start = new Date(Date.UTC(year, m1, Number(d1)));
+  // A week reading months before its own trip belongs to the next year.
+  if (start.getTime() < tripStart.getTime() - 45 * 864e5) {
+    year += 1;
+    start = new Date(Date.UTC(year, m1, Number(d1)));
+  }
+  let end = new Date(Date.UTC(year, m2, Number(d2)));
+  if (end.getTime() < start.getTime()) end = new Date(Date.UTC(year + 1, m2, Number(d2)));
+
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
 async function listAllTrips() {
@@ -46,11 +84,10 @@ async function listAllTrips() {
   return trips;
 }
 
-// Packages are the weeks people actually book, and they exist even at zero sales —
-// which is the only way an empty week still gets a bar.
+// Packages are the weeks people actually book, and they exist at zero sales —
+// the only way an empty week still gets a bar.
 async function fetchPackages(tripUuid) {
-  const body = await apiGet(`/draft_trips/${tripUuid}/packages`);
-  return body.data || [];
+  return (await apiGet(`/draft_trips/${tripUuid}/packages`)).data || [];
 }
 
 async function fetchOrders(tripUuid) {
@@ -69,7 +106,6 @@ async function loadTrip(trip) {
       console.error(`packages failed for ${trip.uuid}: ${err.message}`);
       return [];
     }),
-    // A trip can be listed but have no booking record at all; that's zero, not an outage.
     fetchOrders(trip.uuid).catch((err) => {
       console.error(`bookings failed for ${trip.uuid}: ${err.message}`);
       return null;
@@ -89,35 +125,37 @@ async function loadTrip(trip) {
     }
   }
 
-  const weeks = packages.map((pkg) => ({
-    id: `${trip.uuid}:${pkg.id}`,
-    label: tidy(pkg.name),
-    booked: tally.get(tidy(pkg.name)) || 0,
-    capacity: pkg.quantity == null ? null : Number(pkg.quantity),
-  }));
+  const weeks = packages.map((pkg) => {
+    const label = tidy(pkg.name);
+    return {
+      id: `${trip.uuid}:${pkg.id}`,
+      label,
+      booked: tally.get(label) || 0,
+      capacity: pkg.quantity == null ? null : Number(pkg.quantity),
+      ...weekDates(label, trip),
+    };
+  });
 
-  // Orders that never named a package still represent real people. With a single
-  // week there's only one place they can belong; with several, say so rather than guess.
+  // Orders that never named a package are still real people. One week leaves only
+  // one place they can go; several means say so rather than guess.
   const allocated = weeks.reduce((sum, w) => sum + w.booked, 0);
   const unallocated = Math.max(0, activeTotal - allocated);
-  if (unallocated > 0 && weeks.length === 1) {
-    weeks[0].booked += unallocated;
-  }
+  if (unallocated > 0 && weeks.length === 1) weeks[0].booked += unallocated;
 
   return {
     weeks,
-    activeTotal,
     cancelledTotal,
     unallocated: unallocated > 0 && weeks.length !== 1 ? unallocated : 0,
-    bookingsUnavailable: orders === null,
+    bookingsMissing: orders === null,
   };
 }
 
 async function build() {
   const todayKey = dayKey(new Date());
   const allTrips = await listAllTrips();
+  const warnings = [];
 
-  const inWindow = allTrips
+  const candidates = allTrips
     .filter((trip) => {
       if (EXCLUDED.has(String(trip.uuid))) return false;
       const start = dayKey(trip.start_date);
@@ -126,66 +164,67 @@ async function build() {
     })
     .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
-  const loaded = await mapWithConcurrency(inWindow, 4, (trip) => loadTrip(trip));
+  const loaded = await mapWithConcurrency(candidates, 4, (trip) => loadTrip(trip));
 
-  // One bar per bookable week, grouped under the product it belongs to.
-  const groups = [];
-  const byName = new Map();
-
-  inWindow.forEach((trip, i) => {
+  const bars = [];
+  candidates.forEach((trip, i) => {
     const data = loaded[i];
-    const name = productName(trip.title);
 
-    if (!byName.has(name)) {
-      const group = { name, bars: [], firstStart: trip.start_date };
-      byName.set(name, group);
-      groups.push(group);
+    // A trip WeTravel can't find bookings for isn't a sellable departure. Drop it
+    // from the chart, but say so rather than letting it vanish silently.
+    if (data.bookingsMissing) {
+      warnings.push({
+        uuid: trip.uuid,
+        title: trip.title,
+        issue: 'WeTravel has no booking record for this trip (bookings endpoint returns not found)',
+      });
+      return;
     }
-    const group = byName.get(name);
 
+    const name = productName(trip.title);
     for (const week of data.weeks) {
-      group.bars.push({
+      // Only what's still ahead: a week that already finished isn't progress to track.
+      if (week.end && week.end < todayKey) continue;
+      if (week.start && week.start > SEASON_END) continue;
+
+      bars.push({
         id: week.id,
+        trip: name,
+        tripTitle: trip.title,
+        tripUuid: trip.uuid,
+        tripUrl: trip.url,
         label: week.label,
+        start: week.start,
+        end: week.end,
         booked: week.booked,
         capacity: week.capacity,
-        tripUuid: trip.uuid,
-        tripTitle: trip.title,
-        tripStart: dayKey(trip.start_date),
-        tripEnd: dayKey(trip.end_date),
-        tripUrl: trip.url,
         cancelled: CANCELLED.has(String(trip.uuid)),
         cancelledCount: data.cancelledTotal,
-        bookingsUnavailable: data.bookingsUnavailable,
       });
     }
 
     if (data.unallocated) {
-      group.bars.push({
-        id: `${trip.uuid}:unallocated`,
-        label: 'Unassigned week',
-        booked: data.unallocated,
-        capacity: null,
-        tripUuid: trip.uuid,
-        tripTitle: trip.title,
-        tripStart: dayKey(trip.start_date),
-        tripEnd: dayKey(trip.end_date),
-        tripUrl: trip.url,
-        cancelled: CANCELLED.has(String(trip.uuid)),
-        cancelledCount: data.cancelledTotal,
-        bookingsUnavailable: data.bookingsUnavailable,
+      warnings.push({
+        uuid: trip.uuid,
+        title: trip.title,
+        issue: `${data.unallocated} booking(s) not assigned to any week`,
       });
     }
   });
 
-  const withBars = groups.filter((g) => g.bars.length);
+  bars.sort((a, b) =>
+    (a.start || '').localeCompare(b.start || '') ||
+    (a.end || '').localeCompare(b.end || '') ||
+    a.trip.localeCompare(b.trip));
 
   return {
     asOf: new Date().toISOString(),
+    today: todayKey,
     seasonEnd: SEASON_END,
     target: TARGET,
-    totalBooked: withBars.reduce((sum, g) => sum + g.bars.reduce((s, b) => s + b.booked, 0), 0),
-    groups: withBars.map(({ name, bars }) => ({ name, bars })),
+    totalBooked: bars.reduce((sum, b) => sum + b.booked, 0),
+    bars,
+    warnings,
   };
 }
 
