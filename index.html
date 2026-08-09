@@ -18,8 +18,10 @@
     --target: #ef8b3c;
     --danger: #e0483d;
     --danger-bg: #3a2230;
-    --fresh: #45cde0;
+    --fresh: #2ee6c8;
+    --fresh-bright: #6ffbe0;
     --fresh-dim: #1d5b6b;
+    --fresh-wash: rgba(46,230,200,.20);
     --text: #ffffff;
     --text-2: #b7c5d8;
     --text-3: #8698b4;
@@ -129,37 +131,49 @@
   .single .wlab { display: none; }
 
   /* ---------- new booking, first 24h ---------- */
-  /* Quiet by default: an accent edge and one badge. Nothing moves except a slow
-     breath on the badge, so a wall display reads as calm until you look at it. */
+  /* The whole card lights up — a bright wash plus a glowing border — so a new
+     booking reads as "look here" from across the room, not just up close. */
   .trip.fresh {
-    border-color: var(--fresh-dim);
-    box-shadow: inset 3px 0 0 var(--fresh), 0 0 0 1px rgba(69,205,224,.12);
+    background:
+      linear-gradient(155deg, var(--fresh-wash), transparent 60%),
+      var(--card);
+    border-color: var(--fresh);
+    box-shadow: 0 0 0 1px var(--fresh), 0 0 26px 2px rgba(46,230,200,.35);
+    animation: cardglow 2.2s ease-in-out infinite;
   }
+  @keyframes cardglow {
+    0%, 100% { box-shadow: 0 0 0 1px var(--fresh), 0 0 22px 1px rgba(46,230,200,.3); }
+    50%      { box-shadow: 0 0 0 1.5px var(--fresh-bright), 0 0 34px 4px rgba(46,230,200,.55); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .trip.fresh { animation: none; }
+  }
+
   .newbadge {
-    display: inline-flex; align-items: center; gap: 4px;
-    background: rgba(69,205,224,.14); color: var(--fresh);
-    border: 1px solid var(--fresh-dim);
-    font-size: 9px; font-weight: 700; letter-spacing: .07em;
-    padding: 2px 7px; border-radius: 20px; margin-left: 7px; vertical-align: 2px;
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--fresh); color: #05201c;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+    padding: 3px 8px; border-radius: 20px; margin-left: 7px; vertical-align: 2px;
     white-space: nowrap;
   }
   .newbadge::before {
     content: ""; width: 5px; height: 5px; border-radius: 50%;
-    background: var(--fresh); animation: breathe 2.6s ease-in-out infinite;
+    background: #05201c; animation: breathe 1.4s ease-in-out infinite;
   }
-  @keyframes breathe { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+  @keyframes breathe { 0%,100% { opacity: 1 } 50% { opacity: .2 } }
   @media (prefers-reduced-motion: reduce) {
     .newbadge::before { animation: none; }
   }
 
-  .wk.fresh .wlab, .wk.fresh .wdate { color: var(--fresh); }
+  .wk.fresh { background: var(--fresh-wash); border-radius: 8px; margin: -6px -8px; padding: 6px 8px; }
+  .wk.fresh .wlab, .wk.fresh .wdate { color: var(--fresh-bright); }
   .wpill {
-    font-size: 9px; font-weight: 700; color: var(--fresh);
-    background: rgba(69,205,224,.14); border-radius: 20px;
-    padding: 1px 6px; margin-left: 6px; white-space: nowrap;
+    font-size: 9.5px; font-weight: 800; color: #05201c;
+    background: var(--fresh); border-radius: 20px;
+    padding: 1px 7px; margin-left: 6px; white-space: nowrap;
   }
-  .wk.fresh .fill { box-shadow: 0 0 0 1px var(--fresh); }
-  .wago { font-size: 9.5px; color: var(--fresh); opacity: .8; }
+  .wk.fresh .fill { background: var(--fresh); box-shadow: 0 0 8px 1px rgba(46,230,200,.6); }
+  .wago { font-size: 9.5px; color: var(--fresh-bright); font-weight: 600; }
 
   .stat .n.fresh { color: var(--fresh); }
 
