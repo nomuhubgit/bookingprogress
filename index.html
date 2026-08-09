@@ -139,15 +139,7 @@
       linear-gradient(155deg, var(--fresh-wash), transparent 60%),
       var(--card);
     border-color: var(--fresh);
-    box-shadow: 0 0 0 1px var(--fresh), 0 0 26px 2px rgba(61,220,132,.35);
-    animation: cardglow 2.2s ease-in-out infinite;
-  }
-  @keyframes cardglow {
-    0%, 100% { box-shadow: 0 0 0 1px var(--fresh), 0 0 22px 1px rgba(61,220,132,.3); }
-    50%      { box-shadow: 0 0 0 1.5px var(--fresh-bright), 0 0 34px 4px rgba(61,220,132,.55); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .trip.fresh { animation: none; }
+    box-shadow: 0 0 0 1px var(--fresh);
   }
 
   .newbadge {
@@ -173,7 +165,7 @@
     background: var(--fresh); border-radius: 20px;
     padding: 1px 7px; margin-left: 6px; white-space: nowrap;
   }
-  .wk.fresh .fill { background: var(--fresh); box-shadow: 0 0 8px 1px rgba(61,220,132,.6); }
+  .wk.fresh .fill { background: var(--fresh); }
   .wago { font-size: 9.5px; color: var(--fresh-bright); font-weight: 600; }
 
   .stat .n.fresh { color: var(--fresh); }
@@ -185,6 +177,10 @@
   th { color: var(--text-3); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
   td.n { text-align: right; font-variant-numeric: tabular-nums; }
   tr.met td.n.b { color: var(--fill-full); font-weight: 700; }
+  tr.fresh { background: var(--fresh-wash); box-shadow: inset 3px 0 0 var(--fresh); }
+  tr.fresh td { color: var(--text); }
+  tr.fresh td.n.b { color: var(--fresh-bright); }
+  .tago { color: var(--fresh-bright); font-weight: 600; }
 
   .notes { margin-top: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
   .notes b { color: var(--target); font-weight: 600; }
@@ -403,14 +399,17 @@
           const gap = p.target - w.booked;
           const met = gap <= 0;
           const soldOut = w.capacity != null && w.booked >= w.capacity && w.booked > 0;
-          return `<tr class="${met ? 'met' : ''}">
+          const f = t.cancelled ? { count: 0 } : freshness(w);
+          const rowCls = [met ? 'met' : '', f.count ? 'fresh' : ''].filter(Boolean).join(' ');
+          const status = t.cancelled ? 'Cancelled' : soldOut ? 'Sold out' : met ? 'Target met' : 'Below target';
+          return `<tr class="${rowCls}">
             <td>${esc(range(w.start, w.end))}</td>
-            <td>${esc(t.name)}</td>
+            <td>${esc(t.name)}${f.count ? `<span class="wpill">+${f.count} new</span>` : ''}</td>
             <td>${esc(weekName(w.label))}</td>
             <td class="n b">${w.booked}</td>
             <td class="n">${w.capacity ?? '—'}</td>
             <td class="n">${met ? 0 : gap}</td>
-            <td>${t.cancelled ? 'Cancelled' : soldOut ? 'Sold out' : met ? 'Target met' : 'Below target'}</td>
+            <td>${status}${f.count ? ` · <span class="tago">${esc(ago(f.newest))}</span>` : ''}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>`;
