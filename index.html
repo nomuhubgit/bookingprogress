@@ -401,7 +401,9 @@
           const soldOut = w.capacity != null && w.booked >= w.capacity && w.booked > 0;
           const f = t.cancelled ? { count: 0 } : freshness(w);
           const rowCls = [met ? 'met' : '', f.count ? 'fresh' : ''].filter(Boolean).join(' ');
-          const status = t.cancelled ? 'Cancelled' : soldOut ? 'Sold out' : met ? 'Target met' : 'Below target';
+          const status = t.cancelled
+            ? '<span class="tag">CANCELLED</span>'
+            : soldOut ? 'Sold out' : met ? 'Target met' : 'Below target';
           return `<tr class="${rowCls}">
             <td>${esc(range(w.start, w.end))}</td>
             <td>${esc(t.name)}${f.count ? `<span class="wpill">+${f.count} new</span>` : ''}</td>
