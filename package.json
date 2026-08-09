@@ -1,8 +1,5 @@
 {
-  "name": "wetravel-sheets-dashboard",
+  "name": "wetravel-booking-progress",
   "version": "1.0.0",
-  "description": "Receives WeTravel Pro booking webhooks, saves them to Google Sheets, and displays them live on a dashboard",
-  "dependencies": {
-    "googleapis": "^140.0.1"
-  }
+  "description": "Live booking-progress dashboard reading directly from the WeTravel Partner API"
 }
