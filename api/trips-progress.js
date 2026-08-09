@@ -166,12 +166,14 @@ async function build() {
 
   const loaded = await mapWithConcurrency(candidates, 4, (trip) => loadTrip(trip));
 
-  const bars = [];
+  // One card per departure, weeks nested inside it — that's the unit the team
+  // asks about ("how many on this trip, and which week are they on?").
+  const trips = [];
   candidates.forEach((trip, i) => {
     const data = loaded[i];
 
     // A trip WeTravel can't find bookings for isn't a sellable departure. Drop it
-    // from the chart, but say so rather than letting it vanish silently.
+    // from the board, but say so rather than letting it vanish silently.
     if (data.bookingsMissing) {
       warnings.push({
         uuid: trip.uuid,
@@ -181,27 +183,20 @@ async function build() {
       return;
     }
 
-    const name = productName(trip.title);
-    for (const week of data.weeks) {
-      // Only what's still ahead: a week that already finished isn't progress to track.
-      if (week.end && week.end < todayKey) continue;
-      if (week.start && week.start > SEASON_END) continue;
+    // Only what's still ahead: a week that already ran isn't progress to track.
+    const weeks = data.weeks
+      .filter((w) => !(w.end && w.end < todayKey) && !(w.start && w.start > SEASON_END))
+      .map((w) => ({
+        id: w.id,
+        label: w.label,
+        start: w.start,
+        end: w.end,
+        booked: w.booked,
+        capacity: w.capacity,
+      }))
+      .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
-      bars.push({
-        id: week.id,
-        trip: name,
-        tripTitle: trip.title,
-        tripUuid: trip.uuid,
-        tripUrl: trip.url,
-        label: week.label,
-        start: week.start,
-        end: week.end,
-        booked: week.booked,
-        capacity: week.capacity,
-        cancelled: CANCELLED.has(String(trip.uuid)),
-        cancelledCount: data.cancelledTotal,
-      });
-    }
+    if (!weeks.length) return;
 
     if (data.unallocated) {
       warnings.push({
@@ -210,20 +205,39 @@ async function build() {
         issue: `${data.unallocated} booking(s) not assigned to any week`,
       });
     }
+
+    trips.push({
+      uuid: trip.uuid,
+      name: productName(trip.title),
+      title: trip.title,
+      url: trip.url,
+      destination: trip.destination || '',
+      start: weeks[0].start,
+      end: weeks[weeks.length - 1].end,
+      totalBooked: weeks.reduce((sum, w) => sum + w.booked, 0),
+      totalCapacity: weeks.every((w) => w.capacity == null)
+        ? null
+        : weeks.reduce((sum, w) => sum + (w.capacity || 0), 0),
+      cancelledCount: data.cancelledTotal,
+      cancelled: CANCELLED.has(String(trip.uuid)),
+      weeks,
+    });
   });
 
-  bars.sort((a, b) =>
-    (a.start || '').localeCompare(b.start || '') ||
-    (a.end || '').localeCompare(b.end || '') ||
-    a.trip.localeCompare(b.trip));
+  trips.sort((a, b) =>
+    (a.start || '').localeCompare(b.start || '') || a.name.localeCompare(b.name));
+
+  const allWeeks = trips.flatMap((t) => t.weeks);
 
   return {
     asOf: new Date().toISOString(),
     today: todayKey,
     seasonEnd: SEASON_END,
     target: TARGET,
-    totalBooked: bars.reduce((sum, b) => sum + b.booked, 0),
-    bars,
+    totalBooked: allWeeks.reduce((sum, w) => sum + w.booked, 0),
+    weekCount: allWeeks.length,
+    weeksAtTarget: allWeeks.filter((w) => w.booked >= TARGET).length,
+    trips,
     warnings,
   };
 }

@@ -7,147 +7,132 @@
 <style>
   :root {
     --navy: #1b3358;
-    --navy-deep: #142744;
-    --line: #33507d;
-    --cream: #dedcc6;
-    --bar: #f5b935;
-    --bar-full: #63b98a;
-    --bar-low: #e0723f;
-    --target: #ef8b3c;
-    --ink: #2c3033;
-    --ink-soft: #626976;
-    --grid: #c9c6b0;
+    --card: #21406b;
+    --card-2: #1a3459;
+    --line: #34517c;
     --yellow: #f2b233;
-    --gutter: 44px;
-    --slot: 72px;
+    --fill: #f5b935;
+    --fill-full: #56b98a;
+    --fill-empty: #45618c;
+    --track: #16294a;
+    --target: #ef8b3c;
+    --text: #ffffff;
+    --text-2: #b7c5d8;
+    --text-3: #8698b4;
   }
 
   * { box-sizing: border-box; }
 
   body {
-    margin: 0; padding: 16px 18px 22px;
-    background: var(--navy); color: #fff;
+    margin: 0; padding: 16px 20px 26px;
+    background: var(--navy); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
 
   /* ---------- header ---------- */
-  .head { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding-bottom: 14px; }
+  .head { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding-bottom: 16px; }
   .brand {
     display: flex; align-items: center; gap: 9px;
     font-size: 25px; font-weight: 800; color: var(--yellow); white-space: nowrap;
   }
   .brand svg { width: 29px; height: 29px; flex: none; }
-  .titles h1 { margin: 0; font-size: 17px; font-weight: 700; }
-  .asof { margin-top: 2px; font-size: 11.5px; color: #b9c6d8; }
+  .titles h1 { margin: 0; font-size: 16px; font-weight: 700; }
+  .asof { margin-top: 2px; font-size: 11.5px; color: var(--text-2); }
   .asof b { color: var(--yellow); font-weight: 600; }
   .spacer { flex: 1; }
 
-  .stats { display: flex; gap: 26px; align-items: baseline; }
-  .stat .n { font-size: 25px; font-weight: 700; line-height: 1; }
-  .stat .l { font-size: 10.5px; color: #9fb0c8; margin-top: 4px; letter-spacing: .02em; }
+  .stats { display: flex; gap: 24px; align-items: baseline; }
+  .stat .n { font-size: 26px; font-weight: 700; line-height: 1; }
+  .stat .n.ok { color: var(--fill-full); }
+  .stat .l { font-size: 10.5px; color: var(--text-3); margin-top: 4px; }
 
   .tools { display: flex; align-items: center; gap: 7px; }
   .btn {
-    background: transparent; color: #c3d0e2; border: 1px solid var(--line);
+    background: transparent; color: var(--text-2); border: 1px solid var(--line);
     border-radius: 7px; padding: 6px 11px; font: inherit; font-size: 12px; cursor: pointer;
   }
-  .btn:hover { background: var(--navy-deep); color: #fff; }
+  .btn:hover { background: var(--card); color: #fff; }
   .btn[aria-pressed="true"] { background: var(--yellow); border-color: var(--yellow); color: var(--navy); font-weight: 600; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #58c493; flex: none; }
   .dot.warn { background: var(--target); }
 
-  /* ---------- chart ---------- */
-  .scroller { overflow-x: auto; overflow-y: hidden; }
-  .canvas { transition: opacity .18s ease; }
-  .canvas.loading { opacity: .5; }
+  /* ---------- month sections ---------- */
+  .month { margin-bottom: 22px; }
+  .mhead {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 11px; font-weight: 700; letter-spacing: .13em;
+    color: var(--yellow); text-transform: uppercase; margin-bottom: 10px;
+  }
+  .mhead::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .mhead .c { color: var(--text-3); font-weight: 600; letter-spacing: .04em; }
 
-  .plot {
-    position: relative; height: 340px; background: var(--cream);
-    padding: 28px var(--gutter) 0; border-radius: 3px 3px 0 0;
-  }
-  .rule { position: absolute; left: var(--gutter); right: var(--gutter); height: 1px; background: var(--grid); }
-  .rule .tick {
-    position: absolute; left: calc(var(--gutter) * -1); top: -8px; width: 30px;
-    text-align: right; font-size: 11.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
-  }
-  .targetline { position: absolute; left: 0; right: 0; height: 2px; background: var(--target); }
-  .targetflag {
-    position: absolute; left: 5px; top: -9px; background: var(--navy); color: #fff;
-    font-size: 8px; font-weight: 700; letter-spacing: .09em; padding: 3px 7px; border-radius: 3px;
-  }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); }
 
-  /* height chain must stay definite all the way down or the bars collapse */
-  .bars { position: relative; display: flex; height: 100%; }
-  .slot {
-    flex: 1 1 0; min-width: var(--slot); height: 100%;
-    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-    position: relative;
+  /* ---------- trip card ---------- */
+  .trip {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 13px 14px 12px; position: relative;
   }
-  .val { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1; margin-bottom: 5px; }
-  .slot.zero .val { color: #9a9a8c; }
-  .bar {
-    flex: 0 0 auto; width: 20px; min-height: 2px;
-    background: var(--bar); border-radius: 4px 4px 0 0; transition: height .3s ease;
-  }
-  .slot.full .bar { background: var(--bar-full); }
-  .slot.cancelled .bar { background: var(--bar-low); opacity: .45; }
-  .slot:hover .bar { filter: brightness(1.08); }
-  .slot:hover::before {
-    content: ""; position: absolute; inset: 0; background: rgba(27,51,88,.05);
+  .trip.done { opacity: .62; }
+  .trip.cancelled { opacity: .55; }
+  .trip.cancelled .tname { text-decoration: line-through; }
+
+  .thead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 3px; }
+  .tname { font-size: 14.5px; font-weight: 700; line-height: 1.25; flex: 1; min-width: 0; }
+  .tnum { text-align: right; line-height: 1; white-space: nowrap; }
+  .tnum .b { font-size: 22px; font-weight: 700; }
+  .tnum .b.full { color: var(--fill-full); }
+  .tnum .b.none { color: var(--text-3); }
+  .tnum .s { font-size: 10px; color: var(--text-3); margin-top: 3px; }
+  .tmeta { font-size: 11px; color: var(--text-3); margin-bottom: 11px; }
+
+  .tag {
+    display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: .09em;
+    padding: 2px 6px; border-radius: 3px; vertical-align: 2px; margin-left: 6px;
+    background: var(--target); color: #2b1400;
   }
 
-  .stamp {
-    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%) rotate(-10deg);
-    background: var(--navy); color: #fff; font-size: 8px; font-weight: 700;
-    letter-spacing: .09em; padding: 3px 7px; border-radius: 3px; white-space: nowrap;
+  /* ---------- week meters ---------- */
+  .weeks { display: flex; flex-direction: column; gap: 8px; }
+  .wk { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; align-items: baseline; }
+  .wlab { font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .wdate { font-size: 10.5px; color: var(--text-3); font-weight: 400; margin-left: 5px; }
+  .wnum { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .wnum .of { color: var(--text-3); font-weight: 500; }
+  .wnum.full { color: var(--fill-full); }
+  .wnum.none { color: var(--text-3); }
+
+  .track {
+    grid-column: 1 / -1; position: relative; height: 9px;
+    background: var(--track); border-radius: 5px; overflow: hidden;
+  }
+  .fill { height: 100%; border-radius: 5px; background: var(--fill); transition: width .35s ease; }
+  .fill.full { background: var(--fill-full); }
+  .fill.none { background: transparent; }
+  /* where the goal sits, so a short track reads as "can't get there" */
+  .tick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--target); }
+  .cap {
+    grid-column: 1 / -1; font-size: 9.5px; color: var(--text-3); margin-top: -1px;
   }
 
-  /* ---------- axis ---------- */
-  .axis { display: flex; padding: 0 var(--gutter); background: var(--navy-deep); }
-  .acell {
-    flex: 1 1 0; min-width: var(--slot); padding: 8px 5px 9px; text-align: center;
-    border-right: 1px solid rgba(255,255,255,.05);
-  }
-  .acell:last-child { border-right: 0; }
-  .acell .t {
-    font-size: 10px; font-weight: 700; color: #fff; line-height: 1.25;
-    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
-    -webkit-box-orient: vertical; overflow: hidden;
-  }
-  .acell .d { font-size: 9.5px; color: #93a5bf; margin-top: 3px; line-height: 1.2; }
-
-  .months { display: flex; padding: 0 var(--gutter); }
-  .mcell {
-    padding: 7px 6px 8px; text-align: center;
-    font-size: 10.5px; font-weight: 700; letter-spacing: .11em; color: var(--yellow);
-    border-right: 1px solid var(--line); border-top: 1px solid var(--line);
-  }
-  .mcell:last-child { border-right: 0; }
-
-  /* ---------- tooltip ---------- */
-  .tip {
-    position: fixed; z-index: 40; pointer-events: none; opacity: 0;
-    background: #0d1c33; border: 1px solid var(--line); border-radius: 8px;
-    padding: 9px 11px; font-size: 12px; line-height: 1.5; color: #eaf0f8;
-    box-shadow: 0 10px 26px rgba(0,0,0,.45); max-width: 270px; transition: opacity .12s;
-  }
-  .tip.on { opacity: 1; }
-  .tip b { color: var(--yellow); }
-  .tip .k { color: #93a5bf; }
+  .single .wlab { display: none; }
 
   /* ---------- table + notes ---------- */
-  table { border-collapse: collapse; width: 100%; margin-top: 6px; font-size: 13px; }
-  caption { text-align: left; padding: 8px 2px 10px; color: #b9c6d8; font-size: 12px; }
-  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #26405f; }
-  th { color: #93a5bf; font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  caption { text-align: left; padding: 4px 2px 10px; color: var(--text-2); font-size: 12px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #27415f; }
+  th { color: var(--text-3); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
   td.n { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.met td.n.b { color: var(--bar-full); font-weight: 700; }
+  tr.met td.n.b { color: var(--fill-full); font-weight: 700; }
 
-  .notes { margin-top: 12px; font-size: 11.5px; color: #93a5bf; line-height: 1.6; }
+  .notes { margin-top: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
   .notes b { color: var(--target); font-weight: 600; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--text-3); margin-bottom: 16px; }
+  .legend i { display: inline-block; width: 20px; height: 8px; border-radius: 4px; vertical-align: -1px; margin-right: 5px; }
+
   [hidden] { display: none !important; }
-  .msg { padding: 24px 4px; color: #b9c6d8; font-size: 14px; }
+  .msg { padding: 24px 4px; color: var(--text-2); font-size: 14px; }
   .msg.err { color: #ffbfa8; }
 </style>
 </head>
@@ -163,9 +148,10 @@
     </div>
     <div class="spacer"></div>
     <div class="stats">
-      <div class="stat"><div class="n" id="sBooked">—</div><div class="l">Booked</div></div>
-      <div class="stat"><div class="n" id="sWeeks">—</div><div class="l">Weeks ahead</div></div>
-      <div class="stat"><div class="n" id="sMet">—</div><div class="l">At target</div></div>
+      <div class="stat"><div class="n" id="sBooked">—</div><div class="l">Travellers booked</div></div>
+      <div class="stat"><div class="n" id="sTrips">—</div><div class="l">Departures</div></div>
+      <div class="stat"><div class="n" id="sWeeks">—</div><div class="l">Weeks</div></div>
+      <div class="stat"><div class="n ok" id="sMet">—</div><div class="l">At target</div></div>
     </div>
     <div class="tools">
       <span class="dot" id="dot" title="Live"></span>
@@ -174,120 +160,126 @@
     </div>
   </div>
 
-  <div id="chart">
-    <div class="scroller">
-      <div class="canvas" id="canvas">
-        <div class="plot" id="plot"></div>
-        <div class="axis" id="axis"></div>
-        <div class="months" id="months"></div>
-      </div>
-    </div>
+  <div class="legend" id="legend" hidden>
+    <span><i style="background:#f5b935"></i>Booking</span>
+    <span><i style="background:#56b98a"></i>Sold out</span>
+    <span><i style="background:#16294a;border:1px solid #34517c"></i>Empty</span>
+    <span><i style="background:#ef8b3c;width:3px"></i>Target marker</span>
   </div>
 
+  <div id="board"></div>
   <div id="tableWrap" hidden></div>
   <div class="notes" id="notes"></div>
   <div class="msg" id="msg">Loading booking data…</div>
-  <div class="tip" id="tip" role="status"></div>
 
 <script>
   const POLL_MS = 30000;   // server caches upstream calls, so this stays cheap
-  const STEP = 5;
-  const SLOT_PX = 72;
-
   const $ = (id) => document.getElementById(id);
   const esc = (s) => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
   let showTable = false;
   let latest = null;
 
   const D = (iso) => new Date(iso + 'T00:00:00Z');
-  const fmtRange = (a, b) => {
-    const o = { day: 'numeric', month: 'short', timeZone: 'UTC' };
-    const s = D(a).toLocaleDateString('en-GB', o);
-    const e = D(b).toLocaleDateString('en-GB', o);
-    return s + ' – ' + e;
-  };
+  const day = (iso) => D(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const range = (a, b) => day(a) + ' – ' + day(b);
+  const monthKey = (iso) => iso.slice(0, 7);
+  const monthName = (iso) => D(iso).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const fmtStamp = (iso) => {
     const d = new Date(iso);
-    return isNaN(d) ? '—' : d.toLocaleDateString('en-US',
-      { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) +
-      ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return isNaN(d) ? '—' : d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   };
 
-  function niceMax(bars, target) {
-    const peak = Math.max(target, ...bars.map((b) => b.booked), 0);
-    return Math.max(STEP * 3, Math.ceil((peak + 1) / STEP) * STEP);
+  // "Week 2 (06 Sep - 12 Sep)" -> "Week 2"; the dates are shown separately.
+  const weekName = (label) => String(label || '').replace(/\s*\(.*\)\s*$/, '').trim() || 'Week';
+
+  function meter(w, target) {
+    // The track runs to whichever is larger, so a capacity below target visibly
+    // falls short of the marker instead of quietly rescaling to look full.
+    const scale = Math.max(target, w.capacity || 0, w.booked, 1);
+    const pct = Math.min(100, (w.booked / scale) * 100);
+    const soldOut = w.capacity != null && w.booked >= w.capacity && w.booked > 0;
+    const state = w.booked === 0 ? 'none' : soldOut ? 'full' : '';
+    const tickPct = Math.min(100, (target / scale) * 100);
+
+    return `
+      <div class="wk">
+        <div><span class="wlab">${esc(weekName(w.label))}</span><span class="wdate">${esc(range(w.start, w.end))}</span></div>
+        <div class="wnum ${state}">${w.booked}<span class="of"> / ${w.capacity ?? target}</span></div>
+        <div class="track">
+          <div class="fill ${state}" style="width:${pct}%"></div>
+          <div class="tick" style="left:calc(${tickPct}% - 1px)" title="Target ${target}"></div>
+        </div>
+      </div>`;
   }
 
-  // consecutive bars sharing a month collapse into one band label
-  function monthBands(bars) {
-    const bands = [];
-    for (const b of bars) {
-      const key = (b.start || '').slice(0, 7);
-      const last = bands[bands.length - 1];
-      if (last && last.key === key) last.count++;
-      else bands.push({ key, count: 1, label: D(b.start).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }) });
-    }
-    return bands;
+  function tripCard(t, target) {
+    const soldOut = t.totalCapacity != null && t.totalBooked >= t.totalCapacity && t.totalBooked > 0;
+    const cls = [t.cancelled ? 'cancelled' : '', soldOut ? 'done' : ''].filter(Boolean).join(' ');
+    const numCls = t.totalBooked === 0 ? 'none' : soldOut ? 'full' : '';
+    const many = t.weeks.length > 1;
+
+    return `
+      <div class="trip ${cls}">
+        <div class="thead">
+          <div class="tname">${esc(t.name)}${t.cancelled ? '<span class="tag">CANCELLED</span>' : ''}</div>
+          <div class="tnum">
+            <div class="b ${numCls}">${t.totalBooked}</div>
+            <div class="s">booked</div>
+          </div>
+        </div>
+        <div class="tmeta">${esc(range(t.start, t.end))} · ${t.weeks.length} ${many ? 'weeks' : 'week'}${
+          t.cancelledCount ? ' · ' + t.cancelledCount + ' cancelled' : ''}</div>
+        <div class="weeks ${many ? '' : 'single'}">
+          ${t.weeks.map((w) => meter(w, target)).join('')}
+        </div>
+      </div>`;
   }
 
   function render(p) {
-    const bars = p.bars || [];
-    if (!bars.length) {
+    const trips = p.trips || [];
+    if (!trips.length) {
       $('msg').textContent = 'No departures between today and ' + p.seasonEnd + '.';
-      $('msg').hidden = false; $('chart').hidden = true;
+      $('msg').hidden = false; $('board').hidden = true; $('legend').hidden = true;
       return;
     }
     $('msg').hidden = true;
-    $('chart').hidden = showTable;
+    $('board').hidden = showTable;
+    $('legend').hidden = showTable;
 
-    const max = niceMax(bars, p.target);
-
-    let chrome = '';
-    for (let v = 0; v <= max; v += STEP) {
-      chrome += `<div class="rule" style="bottom:${(v / max) * 100}%"><span class="tick">${v}</span></div>`;
+    // group cards under the month they depart in, keeping date order
+    const months = [];
+    for (const t of trips) {
+      const key = monthKey(t.start);
+      const last = months[months.length - 1];
+      if (last && last.key === key) last.trips.push(t);
+      else months.push({ key, label: monthName(t.start), trips: [t] });
     }
-    chrome += `<div class="targetline" style="bottom:${(p.target / max) * 100}%">
-                 <span class="targetflag">TARGET ${p.target}</span></div>`;
 
-    $('plot').innerHTML = chrome + '<div class="bars">' + bars.map((b) => {
-      const cls = [
-        b.booked ? '' : 'zero',
-        b.capacity && b.booked >= b.capacity ? 'full' : '',
-        b.cancelled ? 'cancelled' : '',
-      ].filter(Boolean).join(' ');
-      return `<div class="slot ${cls}" data-id="${esc(b.id)}">
-                <div class="val">${b.booked}</div>
-                <div class="bar" style="height:${(b.booked / max) * 100}%"></div>
-                ${b.cancelled ? '<span class="stamp">CANCELLED</span>' : ''}
-              </div>`;
-    }).join('') + '</div>';
-
-    $('axis').innerHTML = bars.map((b) => `
-      <div class="acell">
-        <div class="t" title="${esc(b.trip)}">${esc(b.trip)}</div>
-        <div class="d">${esc(fmtRange(b.start, b.end))}</div>
-      </div>`).join('');
-
-    $('months').innerHTML = monthBands(bars)
-      .map((m) => `<div class="mcell" style="flex:${m.count} 1 0;min-width:${m.count * SLOT_PX}px">${esc(m.label)}</div>`)
-      .join('');
-
-    $('canvas').style.minWidth = (bars.length * SLOT_PX + 2 * 44) + 'px';
+    $('board').innerHTML = months.map((m) => {
+      const booked = m.trips.reduce((s, t) => s + t.totalBooked, 0);
+      return `<section class="month">
+        <div class="mhead">${esc(m.label)}
+          <span class="c">${m.trips.length} ${m.trips.length > 1 ? 'departures' : 'departure'} · ${booked} booked</span>
+        </div>
+        <div class="grid">${m.trips.map((t) => tripCard(t, p.target)).join('')}</div>
+      </section>`;
+    }).join('');
 
     $('sBooked').textContent = p.totalBooked;
-    $('sWeeks').textContent = bars.length;
-    $('sMet').textContent = bars.filter((b) => b.booked >= p.target).length;
+    $('sTrips').textContent = trips.length;
+    $('sWeeks').textContent = p.weekCount;
+    $('sMet').textContent = p.weeksAtTarget;
 
     $('notes').innerHTML = (p.warnings || []).length
-      ? '<b>Needs attention in WeTravel:</b> ' + p.warnings
-          .map((w) => esc(w.title) + ' — ' + esc(w.issue)).join(' · ')
+      ? '<b>Needs attention in WeTravel:</b> ' + p.warnings.map((w) => esc(w.title) + ' — ' + esc(w.issue)).join(' · ')
       : '';
 
-    bindTips(bars, p);
-    renderTable(bars, p);
+    renderTable(trips, p);
   }
 
-  function renderTable(bars, p) {
+  function renderTable(trips, p) {
+    const rows = trips.flatMap((t) => t.weeks.map((w) => ({ t, w })));
     $('tableWrap').innerHTML = `
       <table>
         <caption>Every bookable week from today through ${esc(p.seasonEnd)}, in date order.
@@ -296,52 +288,24 @@
           <th>Dates</th><th>Trip</th><th>Week</th>
           <th class="n">Booked</th><th class="n">Capacity</th><th class="n">To target</th><th>Status</th>
         </tr></thead>
-        <tbody>${bars.map((b) => {
-          const gap = p.target - b.booked;
+        <tbody>${rows.map(({ t, w }) => {
+          const gap = p.target - w.booked;
           const met = gap <= 0;
+          const soldOut = w.capacity != null && w.booked >= w.capacity && w.booked > 0;
           return `<tr class="${met ? 'met' : ''}">
-            <td>${esc(fmtRange(b.start, b.end))}</td>
-            <td>${esc(b.trip)}</td>
-            <td>${esc(b.label)}</td>
-            <td class="n b">${b.booked}</td>
-            <td class="n">${b.capacity ?? '—'}</td>
+            <td>${esc(range(w.start, w.end))}</td>
+            <td>${esc(t.name)}</td>
+            <td>${esc(weekName(w.label))}</td>
+            <td class="n b">${w.booked}</td>
+            <td class="n">${w.capacity ?? '—'}</td>
             <td class="n">${met ? 0 : gap}</td>
-            <td>${b.cancelled ? 'Cancelled' : met ? 'Target met' : 'Below target'}</td>
+            <td>${t.cancelled ? 'Cancelled' : soldOut ? 'Sold out' : met ? 'Target met' : 'Below target'}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>`;
   }
 
-  function bindTips(bars, p) {
-    const byId = Object.fromEntries(bars.map((b) => [b.id, b]));
-    const tip = $('tip');
-    document.querySelectorAll('.slot').forEach((slot) => {
-      slot.addEventListener('mouseenter', () => {
-        const b = byId[slot.dataset.id];
-        if (!b) return;
-        const gap = p.target - b.booked;
-        tip.innerHTML = `<b>${esc(b.trip)}</b><br>
-          <span class="k">${esc(b.label)}</span><br>
-          <span class="k">Dates</span> ${esc(fmtRange(b.start, b.end))}<br>
-          <span class="k">Booked</span> ${b.booked}${b.capacity ? ' of ' + b.capacity + ' spots' : ''}<br>
-          ${b.cancelledCount ? `<span class="k">Cancelled on this trip</span> ${b.cancelledCount}<br>` : ''}
-          ${gap > 0 ? `<span class="k">To target</span> ${gap} more` : '<span class="k">Target met</span>'}
-          ${b.cancelled ? '<br><span class="k">This departure is cancelled</span>' : ''}`;
-        tip.classList.add('on');
-      });
-      slot.addEventListener('mousemove', (e) => {
-        const pad = 14, r = tip.getBoundingClientRect();
-        let x = e.clientX + pad, y = e.clientY + pad;
-        if (x + r.width > innerWidth) x = e.clientX - r.width - pad;
-        if (y + r.height > innerHeight) y = e.clientY - r.height - pad;
-        tip.style.left = x + 'px'; tip.style.top = y + 'px';
-      });
-      slot.addEventListener('mouseleave', () => tip.classList.remove('on'));
-    });
-  }
-
   async function load(force) {
-    $('canvas').classList.add('loading');
     try {
       const res = await fetch('/api/trips-progress' + (force ? '?refresh=1' : ''));
       const p = await res.json();
@@ -349,20 +313,17 @@
 
       latest = p;
       $('asof').textContent = fmtStamp(p.asOf);
-      $('range').textContent = D(p.today).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }) +
-        ' to ' + D(p.seasonEnd).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) +
-        ' — Booking Data';
+      $('range').textContent = D(p.today).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })
+        + ' to ' + D(p.seasonEnd).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
       $('dot').className = 'dot' + (p.stale ? ' warn' : '');
       $('dot').title = p.stale ? 'Showing last known data' : 'Live';
       render(p);
     } catch (err) {
       if (!latest) {
         $('msg').textContent = 'Could not load booking data: ' + err.message;
-        $('msg').className = 'msg err'; $('msg').hidden = false; $('chart').hidden = true;
+        $('msg').className = 'msg err'; $('msg').hidden = false; $('board').hidden = true;
       }
       $('dot').className = 'dot warn';
-    } finally {
-      $('canvas').classList.remove('loading');
     }
   }
 
@@ -370,7 +331,8 @@
     showTable = !showTable;
     $('tableBtn').setAttribute('aria-pressed', String(showTable));
     $('tableWrap').hidden = !showTable;
-    $('chart').hidden = showTable;
+    $('board').hidden = showTable;
+    $('legend').hidden = showTable;
   });
   $('refreshBtn').addEventListener('click', () => load(true));
 
