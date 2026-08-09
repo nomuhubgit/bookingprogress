@@ -7,7 +7,7 @@ const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 120000);
 // Corporate/charter departures aren't retail sales, so they'd distort the target.
 // Also where a departure goes once it's been called off.
 const EXCLUDED = new Set(
-  (process.env.EXCLUDED_TRIP_UUIDS || '8612103268,9638755524')
+  (process.env.EXCLUDED_TRIP_UUIDS || '8612103268,9638755524,10127626')
     .split(',').map((s) => s.trim()).filter(Boolean)
 );
 
@@ -173,13 +173,10 @@ async function build() {
     const data = loaded[i];
 
     // A trip WeTravel can't find bookings for isn't a sellable departure. Drop it
-    // from the board, but say so rather than letting it vanish silently.
+    // from the board; logged server-side only, since it's not something the team
+    // can act on from the dashboard.
     if (data.bookingsMissing) {
-      warnings.push({
-        uuid: trip.uuid,
-        title: trip.title,
-        issue: 'WeTravel has no booking record for this trip (bookings endpoint returns not found)',
-      });
+      console.error(`no booking record for ${trip.uuid} (${trip.title})`);
       return;
     }
 
