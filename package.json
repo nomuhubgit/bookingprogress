@@ -1,0 +1,8 @@
+{
+  "name": "wetravel-sheets-dashboard",
+  "version": "1.0.0",
+  "description": "Receives WeTravel Pro booking webhooks, saves them to Google Sheets, and displays them live on a dashboard",
+  "dependencies": {
+    "googleapis": "^140.0.1"
+  }
+}
