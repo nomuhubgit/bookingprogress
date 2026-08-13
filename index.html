@@ -285,6 +285,50 @@
   [hidden] { display: none !important; }
   .msg { padding: 24px 4px; color: var(--text-2); font-size: 14px; }
   .msg.err { color: #ffbfa8; }
+
+  /* ---------- shared tooltip (report bars + day cells) ---------- */
+  .tip {
+    position: fixed; z-index: 40; pointer-events: none; opacity: 0;
+    background: #0d1c33; border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; line-height: 1.5; color: var(--text);
+    box-shadow: 0 10px 26px rgba(0,0,0,.45); max-width: 280px; transition: opacity .12s;
+  }
+  .tip.on { opacity: 1; }
+  .tip .tt { font-weight: 700; color: var(--yellow); margin-bottom: 5px; }
+  .tip .tk { color: var(--text-3); }
+  .tip .trow { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0; }
+  .tip .trow b { font-variant-numeric: tabular-nums; }
+  .tip .more { color: var(--text-3); font-size: 11px; margin-top: 3px; }
+  .tip .hint { color: var(--text-3); font-size: 10.5px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+
+  .cslot, .dcell { cursor: pointer; }
+
+  /* ---------- click popup: full breakdown for one period ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(10,18,32,.6);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal {
+    position: relative; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .modal-close {
+    position: absolute; top: 12px; right: 14px; background: transparent; border: 0;
+    color: var(--text-3); font-size: 22px; line-height: 1; cursor: pointer; padding: 4px;
+  }
+  .modal-close:hover { color: var(--text); }
+  .mtitle { font-size: 16px; font-weight: 700; margin: 0 0 3px; padding-right: 20px; }
+  .msub { font-size: 12px; color: var(--text-2); margin-bottom: 16px; }
+  .mrow { padding: 10px 0; border-bottom: 1px solid #2a4568; }
+  .mrow:last-child { border-bottom: 0; }
+  .mrow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .mtrip { font-weight: 700; font-size: 13.5px; }
+  .mcount { font-weight: 700; font-size: 14px; color: var(--yellow); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mcount.charter { color: #8fb3e0; }
+  .mwhen { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+  .mempty { color: var(--text-3); font-size: 13px; padding: 12px 0; }
+  .mcancel { color: var(--danger); font-size: 11px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -326,6 +370,14 @@
   <div id="tableWrap" hidden></div>
   <div class="notes" id="notes"></div>
   <div class="msg" id="msg">Loading booking data…</div>
+  <div class="tip" id="tip" role="status"></div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
 
 <script>
   const POLL_MS = 30000;   // server caches upstream calls, so this stays cheap
@@ -601,11 +653,50 @@
     return `${MON[b.start.getUTCMonth()]}<br>${b.start.getUTCFullYear()}`;
   }
 
+  // Same period label as bucketLabel() but plain text, for attributes/titles.
+  function bucketPlain(b) {
+    if (rGran === 'daily') return `${DOW[b.start.getUTCDay()]}, ${b.start.getUTCDate()} ${MON[b.start.getUTCMonth()]}`;
+    if (rGran === 'weekly') return `${b.start.getUTCDate()} ${MON[b.start.getUTCMonth()]} – ${b.end.getUTCDate()} ${MON[b.end.getUTCMonth()]}`;
+    return `${MON[b.start.getUTCMonth()]} ${b.start.getUTCFullYear()}`;
+  }
+
+  // Oman is UTC+4 with no DST. WeTravel's created_at is UTC, so a booking at
+  // 22:00 UTC already fell on the next calendar day in Muscat — shifting by
+  // the offset before reading the date turns it into the correct local day.
+  const OMAN_OFFSET_MS = 4 * 60 * 60 * 1000;
+  const omanDay = (isoTimestamp) => {
+    const ms = Date.parse(isoTimestamp);
+    return Number.isFinite(ms) ? new Date(ms + OMAN_OFFSET_MS).toISOString().slice(0, 10) : isoTimestamp.slice(0, 10);
+  };
+
+  // Muscat wall-clock time for a single booking's timestamp, for the tooltip
+  // and popup — the bucketing math uses the +4h shift trick, but for display
+  // the browser's built-in Intl timezone support reads more naturally.
+  const fmtOman = (isoTimestamp) => new Date(isoTimestamp).toLocaleString('en-GB', {
+    timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+
+  // Which trips booked within this period, and how many each — this is what
+  // both the hover tooltip and the click popup are built from.
+  function tripBreakdown(events, from, to, charters) {
+    const a = iso(from), z = iso(to);
+    const byTrip = new Map();
+    for (const e of events) {
+      if (omanDay(e.at) < a || omanDay(e.at) > z) continue;
+      if (e.x && !charters) continue;
+      if (!byTrip.has(e.t)) byTrip.set(e.t, { trip: e.t, n: 0, c: 0, charter: !!e.x, bookings: [] });
+      const row = byTrip.get(e.t);
+      row.n += e.n; row.c += e.c;
+      if (e.n > 0) row.bookings.push({ at: e.at, n: e.n });
+    }
+    return Array.from(byTrip.values()).sort((x, y) => y.n - x.n);
+  }
+
   function tally(events, from, to, charters) {
     let n = 0, c = 0, ch = 0;
     const a = iso(from), z = iso(to);
     for (const e of events) {
-      const day = e.at.slice(0, 10);
+      const day = omanDay(e.at);
       if (day < a || day > z) continue;
       if (e.x) { ch += e.n; if (!charters) continue; }
       n += e.n; c += e.c;
@@ -642,7 +733,8 @@
       const isToday = iso(d) === p.today;
       const peak = Math.max(3, ...Array.from({ length: 7 }, (_, j) =>
         tally(p.events, addDays(wkStart, j), addDays(wkStart, j), rCharters).n));
-      return `<div class="dcell ${ahead ? 'ahead' : ''} ${isToday ? 'today' : ''} ${v ? '' : 'zero'}">
+      return `<div class="dcell ${ahead ? 'ahead' : ''} ${isToday ? 'today' : ''} ${v ? '' : 'zero'}"
+                   data-start="${iso(d)}" data-end="${iso(d)}" data-label="${esc(DOW[i] + ', ' + d.getUTCDate() + ' ' + MON[d.getUTCMonth()])}">
         <div class="dbar-wrap"><div class="dbar" style="height:${(v / peak) * 100}%"></div></div>
         <div class="dnum">${v}</div>
         <div class="dlab">${DOW[i]}${isToday ? ' •' : ''}</div>
@@ -665,7 +757,7 @@
 
     const bars = bs.map((b) => `
       <div class="cslot ${b.n ? '' : 'zero'} ${showTarget && b.n >= target ? 'hit' : ''} ${b.current ? 'partial' : ''}"
-           title="${esc(iso(b.start))} → ${esc(iso(b.end))}: ${b.n} booking(s)${b.charter ? `, ${b.charter} charter` : ''}">
+           data-start="${iso(b.start)}" data-end="${iso(b.end)}" data-label="${esc(bucketPlain(b))}">
         <div class="cval">${b.n}</div>
         <div class="cbar" style="height:${(b.n / max) * 100}%"></div>
       </div>`).join('');
@@ -711,7 +803,7 @@
             <button data-ch="0" aria-pressed="${!rCharters}">Retail only</button>
             <button data-ch="1" aria-pressed="${rCharters}">Incl. charters</button>
           </div>
-          <div class="fnote">${p.tripsScanned} trips scanned · ${totalCharter} charter booking(s) in range</div>
+          <div class="fnote">${p.tripsScanned} trips scanned · ${totalCharter} charter booking(s) in range · dates in Muscat time (UTC+4)</div>
         </div>
         <div class="chart">${chrome}<div class="cbars">${bars}</div></div>
         <div class="caxis">${axis}</div>
@@ -721,6 +813,8 @@
           <span><i style="background:repeating-linear-gradient(135deg,#f5b935 0 4px,rgba(245,185,53,.35) 4px 8px)"></i>Still in progress</span>
         </div>
       </div>`;
+
+    bindReportInteractions(p);
 
     $('granSeg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       rGran = b.dataset.g;
@@ -734,6 +828,73 @@
       rCharters = b.dataset.ch === '1'; renderReport();
     }));
   }
+
+  // Hover for a quick read, click for the full list — both driven by the same
+  // per-period breakdown so they can never disagree with each other.
+  function bindReportInteractions(p) {
+    const tip = $('tip');
+
+    function tipHtml(rows, label, charter) {
+      const total = rows.reduce((s, r) => s + r.n, 0);
+      if (!total) return `<div class="tt">${esc(label)}</div><div class="tk">No bookings in this period</div>`;
+      const shown = rows.filter((r) => r.n > 0).slice(0, 5);
+      const rest = rows.filter((r) => r.n > 0).length - shown.length;
+      return `<div class="tt">${esc(label)}</div>
+        <div class="tk">${total} booking${total > 1 ? 's' : ''} · ${rows.filter((r) => r.n > 0).length} trip${rows.filter((r) => r.n > 0).length > 1 ? 's' : ''}${charter ? ' · incl. charters' : ''}</div>
+        ${shown.map((r) => `<div class="trow"><span>${esc(r.trip)}${r.charter ? ' 🏫' : ''}</span><b>+${r.n}</b></div>`).join('')}
+        ${rest > 0 ? `<div class="more">+${rest} more trip${rest > 1 ? 's' : ''}</div>` : ''}
+        <div class="hint">Click for full details</div>`;
+    }
+
+    function moveTip(e) {
+      const pad = 14, r = tip.getBoundingClientRect();
+      let x = e.clientX + pad, y = e.clientY + pad;
+      if (x + r.width > innerWidth) x = e.clientX - r.width - pad;
+      if (y + r.height > innerHeight) y = e.clientY - r.height - pad;
+      tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    }
+
+    document.querySelectorAll('.cslot[data-start], .dcell[data-start]').forEach((el) => {
+      const from = D(el.dataset.start), to = D(el.dataset.end);
+      const rows = tripBreakdown(p.events, from, to, rCharters);
+
+      el.addEventListener('mouseenter', () => {
+        tip.innerHTML = tipHtml(rows, el.dataset.label, rCharters);
+        tip.classList.add('on');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', () => tip.classList.remove('on'));
+      el.addEventListener('click', () => {
+        tip.classList.remove('on');
+        openReportModal(el.dataset.label, rows, rCharters);
+      });
+    });
+  }
+
+  function openReportModal(label, rows, charter) {
+    const withBookings = rows.filter((r) => r.n > 0);
+    const total = withBookings.reduce((s, r) => s + r.n, 0);
+
+    $('modalBody').innerHTML = `
+      <div class="mtitle">${esc(label)}</div>
+      <div class="msub">${total} booking${total !== 1 ? 's' : ''} across ${withBookings.length} trip${withBookings.length !== 1 ? 's' : ''}${charter ? ' (incl. charters)' : ' (retail only)'}</div>
+      ${withBookings.length ? withBookings.map((r) => `
+        <div class="mrow">
+          <div class="mrow-top">
+            <span class="mtrip">${esc(r.trip)}${r.charter ? ' 🏫' : ''}</span>
+            <span class="mcount ${r.charter ? 'charter' : ''}">+${r.n}</span>
+          </div>
+          <div class="mwhen">${r.bookings.map((b) => esc(fmtOman(b.at)) + (b.n > 1 ? ` (+${b.n})` : '')).join(' · ')}</div>
+          ${r.c ? `<div class="mcancel">${r.c} cancelled in this period</div>` : ''}
+        </div>`).join('') : '<div class="mempty">No bookings in this period.</div>'}`;
+
+    $('modalBackdrop').hidden = false;
+  }
+
+  function closeReportModal() { $('modalBackdrop').hidden = true; }
+  $('modalClose').addEventListener('click', closeReportModal);
+  $('modalBackdrop').addEventListener('click', (e) => { if (e.target.id === 'modalBackdrop') closeReportModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeReportModal(); });
 
   async function loadReport(force) {
     try {

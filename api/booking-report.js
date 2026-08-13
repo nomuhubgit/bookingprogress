@@ -12,6 +12,12 @@ const LOOKBACK_DAYS = Number(process.env.REPORT_LOOKBACK_DAYS || 300);
 
 const CACHE_TTL_MS = Number(process.env.REPORT_CACHE_TTL_MS || 180000);
 
+// Oman is UTC+4 year-round — no DST to account for. WeTravel's order timestamps
+// come back in UTC, so a booking at 22:00 UTC is already the next calendar day
+// in Muscat; shifting by this offset before reading Y/M/D turns "UTC clock
+// fields" into "Oman clock fields" with no timezone library needed.
+const OMAN_OFFSET_MS = 4 * 60 * 60 * 1000;
+
 // Broken or duplicated records that should never reach any view.
 const SKIP = new Set(
   (process.env.REPORT_SKIP_UUIDS || '10127626,17245052')
@@ -102,15 +108,19 @@ async function build() {
 
   events.sort((a, b) => a.at.localeCompare(b.at));
 
-  const today = new Date(nowMs);
-  const weekStart = new Date(Date.UTC(
-    today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - today.getUTCDay()
+  // "Today" and the week boundary are both read off Oman's calendar, not the
+  // server's UTC clock — this is what decides which bucket a late-night booking
+  // falls into.
+  const nowOman = new Date(nowMs + OMAN_OFFSET_MS);
+  const weekStartOman = new Date(Date.UTC(
+    nowOman.getUTCFullYear(), nowOman.getUTCMonth(), nowOman.getUTCDate() - nowOman.getUTCDay()
   ));
 
   return {
     asOf: new Date(nowMs).toISOString(),
-    today: today.toISOString().slice(0, 10),
-    weekStart: weekStart.toISOString().slice(0, 10),
+    today: nowOman.toISOString().slice(0, 10),
+    weekStart: weekStartOman.toISOString().slice(0, 10),
+    timezone: 'Asia/Muscat (UTC+4)',
     weeklyTarget: WEEKLY_TARGET,
     lookbackDays: LOOKBACK_DAYS,
     tripsScanned: scanned.length,
