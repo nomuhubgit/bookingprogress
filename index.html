@@ -253,6 +253,10 @@
     background: var(--fill); border-radius: 5px 5px 0 0; transition: height .3s ease;
   }
   .cslot.hit .cbar { background: var(--fill-full); }
+  /* The bar currently driving the hero/KPI panel above — a ring, not a color
+     swap, so it stays legible whether the bar is also .zero, .hit, or .partial. */
+  .cslot.selected .cbar { box-shadow: 0 0 0 2px var(--yellow); }
+  .cslot.selected .cval { color: var(--yellow); }
   /* the in-progress period is drawn hollow so a partial week never reads as a miss */
   .cslot.partial .cbar {
     background: repeating-linear-gradient(135deg, var(--fill) 0 6px, rgba(245,185,53,.35) 6px 12px);
@@ -274,6 +278,22 @@
   .kpi-head { background: var(--card-2); padding: 10px 16px; }
   .kpi-head .kt { font-size: 12.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #fff; }
   .kpi-head .ks { font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
+  .kpi-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  /* ---------- period navigation (hero panel + monthly KPI head) ---------- */
+  .pnav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .pnav .ptitle { flex: 1; }
+  .pnav-kpi { margin-bottom: 0; }
+  .navbtn {
+    background: transparent; border: 1px solid var(--line); color: var(--text-2);
+    width: 24px; height: 24px; border-radius: 6px; font-size: 14px; line-height: 1;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .navbtn:hover:not(:disabled) { background: var(--card-2); color: #fff; }
+  .navbtn:disabled { opacity: .3; cursor: default; }
+  .navbtn-today {
+    width: auto; padding: 0 9px; font-size: 10.5px; font-weight: 700;
+  }
   .kpi-body { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
   @media (max-width: 760px) { .kpi-body { grid-template-columns: 1fr; } }
   .kpi-col { background: var(--card); padding: 14px 16px; }
@@ -340,33 +360,6 @@
   /* Listeners bind to the bar shapes themselves, not the full-height column,
      so hovering empty space above a short bar doesn't trigger the tooltip. */
   .cbar, .dbar { cursor: pointer; }
-
-  /* ---------- click popup: full breakdown for one period ---------- */
-  .modal-backdrop {
-    position: fixed; inset: 0; z-index: 50; background: rgba(10,18,32,.6);
-    display: flex; align-items: center; justify-content: center; padding: 20px;
-  }
-  .modal {
-    position: relative; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto;
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 20px 22px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
-  }
-  .modal-close {
-    position: absolute; top: 12px; right: 14px; background: transparent; border: 0;
-    color: var(--text-3); font-size: 22px; line-height: 1; cursor: pointer; padding: 4px;
-  }
-  .modal-close:hover { color: var(--text); }
-  .mtitle { font-size: 16px; font-weight: 700; margin: 0 0 3px; padding-right: 20px; }
-  .msub { font-size: 12px; color: var(--text-2); margin-bottom: 16px; }
-  .mrow { padding: 10px 0; border-bottom: 1px solid #2a4568; }
-  .mrow:last-child { border-bottom: 0; }
-  .mrow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-  .mtrip { font-weight: 700; font-size: 13.5px; }
-  .mcount { font-weight: 700; font-size: 14px; color: var(--yellow); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .mcount.charter { color: #8fb3e0; }
-  .mwhen { font-size: 11px; color: var(--text-3); margin-top: 3px; }
-  .mempty { color: var(--text-3); font-size: 13px; padding: 12px 0; }
-  .mcancel { color: var(--danger); font-size: 11px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -409,13 +402,6 @@
   <div class="notes" id="notes"></div>
   <div class="msg" id="msg">Loading booking data…</div>
   <div class="tip" id="tip" role="status"></div>
-
-  <div class="modal-backdrop" id="modalBackdrop" hidden>
-    <div class="modal" id="modal" role="dialog" aria-modal="true">
-      <button class="modal-close" id="modalClose" aria-label="Close">×</button>
-      <div id="modalBody"></div>
-    </div>
-  </div>
 
 <script>
   const POLL_MS = 30000;   // server caches upstream calls, so this stays cheap
@@ -660,6 +646,13 @@
   // wasn't, so there's no toggle to turn this back on.
   const rCharters = false;
 
+  // The week/month the hero panel, daily strip, and KPI panel are showing.
+  // null means "not yet initialized" — renderReport() sets it to the real
+  // current period on first run. Clicking a bar or a nav arrow changes these;
+  // neither is ever allowed to move past the real current period.
+  let selectedWeekStart = null;
+  let selectedMonthStart = null;
+
   const iso = (d) => d.toISOString().slice(0, 10);
   const addDays = (d, n) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
   const sundayOf = (d) => addDays(d, -d.getUTCDay());
@@ -711,25 +704,17 @@
     return Number.isFinite(ms) ? new Date(ms + OMAN_OFFSET_MS).toISOString().slice(0, 10) : isoTimestamp.slice(0, 10);
   };
 
-  // Muscat wall-clock time for a single booking's timestamp, for the tooltip
-  // and popup — the bucketing math uses the +4h shift trick, but for display
-  // the browser's built-in Intl timezone support reads more naturally.
-  const fmtOman = (isoTimestamp) => new Date(isoTimestamp).toLocaleString('en-GB', {
-    timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
-  });
-
-  // Which trips booked within this period, and how many each — this is what
-  // both the hover tooltip and the click popup are built from.
+  // Which trips booked within this period, and how many each — what the
+  // hover tooltip is built from.
   function tripBreakdown(events, from, to, charters) {
     const a = iso(from), z = iso(to);
     const byTrip = new Map();
     for (const e of events) {
       if (omanDay(e.at) < a || omanDay(e.at) > z) continue;
       if (e.x && !charters) continue;
-      if (!byTrip.has(e.t)) byTrip.set(e.t, { trip: e.t, n: 0, c: 0, charter: !!e.x, bookings: [] });
+      if (!byTrip.has(e.t)) byTrip.set(e.t, { trip: e.t, n: 0, c: 0, charter: !!e.x });
       const row = byTrip.get(e.t);
       row.n += e.n; row.c += e.c;
-      if (e.n > 0) row.bookings.push({ at: e.at, n: e.n });
     }
     return Array.from(byTrip.values()).sort((x, y) => y.n - x.n);
   }
@@ -791,27 +776,37 @@
   // the caller). Weekly reuses the same current-week bounds as the hero panel
   // above it; Monthly builds the equivalent for the current calendar month,
   // with its target scaled to however many Sun–Sat weeks actually fall in it.
-  function buildKpiPanel(p, today, wkStart, wkEnd, elapsed, target) {
+  function buildKpiPanel(p, today, wkStart, wkEnd, elapsed, target, isCurrentWeek) {
     const isWeekly = rGran === 'weekly';
-    let periodStart, periodEnd, periodDays, periodElapsed, periodTarget, periodLabel;
+    let periodStart, periodEnd, periodDays, periodElapsed, periodTarget, periodLabel, isCurrentPeriod;
+    let canGoBackPeriod = true;
+    const earliestIso = iso(addDays(today, -(p.lookbackDays || 300)));
 
     if (isWeekly) {
       periodStart = wkStart; periodEnd = wkEnd; periodDays = 7; periodElapsed = elapsed;
-      periodTarget = target;
+      periodTarget = target; isCurrentPeriod = isCurrentWeek;
       periodLabel = `${wkStart.getUTCDate()} ${MON[wkStart.getUTCMonth()]} – ${wkEnd.getUTCDate()} ${MON[wkEnd.getUTCMonth()]} ${wkEnd.getUTCFullYear()}`;
+      canGoBackPeriod = iso(addDays(wkStart, -7)) >= earliestIso;
     } else {
-      const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-      const monthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+      const monthStart = D(selectedMonthStart);
+      const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
+      const realMonthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+      isCurrentPeriod = iso(monthStart) === iso(realMonthStart);
       periodStart = monthStart; periodEnd = monthEnd;
       periodDays = monthEnd.getUTCDate();
-      periodElapsed = today.getUTCDate();
+      periodElapsed = isCurrentPeriod ? today.getUTCDate() : periodDays;
       const weeks = weeksInMonth(monthStart, monthEnd);
       periodTarget = weeks.length * target;
       periodLabel = `${MON[monthStart.getUTCMonth()]} ${monthStart.getUTCFullYear()} · ${weeks.length} week${weeks.length !== 1 ? 's' : ''} × ${target}`;
+      const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
+      canGoBackPeriod = iso(prevMonthStart) >= earliestIso.slice(0, 7) + '-01';
     }
 
     const kpis = periodKpis(p.events, periodStart, periodEnd);
     const avgPerDay = periodElapsed > 0 ? kpis.gross / periodElapsed : 0;
+    // A finished period has nothing left to search past its own end; the
+    // current one still can't look beyond today (no future data exists anyway).
+    const searchLimit = isCurrentPeriod ? p.today : iso(periodEnd);
 
     let bestLine = '—';
     if (isWeekly) {
@@ -826,7 +821,7 @@
         bestLine = `${bl}${top ? ` — ${top[0]} (+${top[1]})` : ''}`;
       }
     } else {
-      const weeks = weeksInMonth(periodStart, periodEnd).filter((w) => iso(w.start) <= p.today);
+      const weeks = weeksInMonth(periodStart, periodEnd).filter((w) => iso(w.start) <= searchLimit);
       let bv = -1, bl = null, bt = null;
       for (const w of weeks) {
         const { sum, top } = sumDays(kpis.perDay, kpis.perDayTrip, w.start, w.end);
@@ -849,11 +844,23 @@
     const retentionBadge = retention == null ? '' : retention >= 90 ? '<span class="kbadge good">Strong</span>'
       : retention >= 75 ? '<span class="kbadge warn">OK</span>' : '<span class="kbadge bad">Weak</span>';
 
+    const daysLoggedText = isCurrentPeriod ? `${periodElapsed} of ${periodDays}` : `${periodDays} (completed)`;
+
     return `
       <div class="kpi">
         <div class="kpi-head">
-          <div class="kt">${isWeekly ? 'Weekly' : 'Monthly'} Summary and KPIs</div>
-          <div class="ks">${esc(periodLabel)} · Day ${periodElapsed} of ${periodDays}</div>
+          <div class="kpi-head-row">
+            <div>
+              <div class="kt">${isWeekly ? 'Weekly' : 'Monthly'} Summary and KPIs</div>
+              <div class="ks">${esc(periodLabel)}${isCurrentPeriod ? ` · Day ${periodElapsed} of ${periodDays}` : ' · completed'}</div>
+            </div>
+            ${isWeekly ? '' : `
+              <div class="pnav pnav-kpi">
+                <button class="navbtn" id="moPrev" aria-label="Previous month" ${canGoBackPeriod ? '' : 'disabled'}>‹</button>
+                <button class="navbtn" id="moNext" aria-label="Next month" ${isCurrentPeriod ? 'disabled' : ''}>›</button>
+                ${isCurrentPeriod ? '' : '<button class="navbtn navbtn-today" id="moToday">This month</button>'}
+              </div>`}
+          </div>
         </div>
         <div class="kpi-body">
           <div class="kpi-col">
@@ -863,7 +870,7 @@
             <div class="kpi-row"><span class="kl">Total Rebooked to Other Trip</span><span class="kv">${kpis.rebooked || '—'}</span></div>
             <div class="kpi-row"><span class="kl">Net Bookings (gross less cancelled)</span><span class="kv">${kpis.net}</span></div>
             <div class="kpi-row"><span class="kl">${isWeekly ? 'Weekly' : 'Monthly'} Target</span><span class="kv">${periodTarget}</span></div>
-            <div class="kpi-row"><span class="kl">Days Logged</span><span class="kv">${periodElapsed} of ${periodDays}</span></div>
+            <div class="kpi-row"><span class="kl">Days Logged</span><span class="kv">${daysLoggedText}</span></div>
             <div class="kpi-row"><span class="kl">Average Bookings per Day</span><span class="kv">${avgPerDay.toFixed(1)}</span></div>
             <div class="kpi-row"><span class="kl">Best Booking ${isWeekly ? 'Day' : 'per Week'}</span><span class="kv">${esc(bestLine)}</span></div>
           </div>
@@ -905,18 +912,32 @@
     }
 
     const today = D(p.today);
-    const wkStart = D(p.weekStart);
+    if (selectedWeekStart === null) selectedWeekStart = p.weekStart;
+    if (selectedMonthStart === null) {
+      selectedMonthStart = iso(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)));
+    }
+
+    const wkStart = D(selectedWeekStart);
     const wkEnd = addDays(wkStart, 6);
+    const isCurrentWeek = selectedWeekStart === p.weekStart;
     const week = tally(p.events, wkStart, wkEnd, rCharters);
     const target = p.weeklyTarget;
     const pct = Math.min(100, (week.n / target) * 100);
     const hit = week.n >= target;
 
-    // Days already finished, counting today as in play.
-    const elapsed = Math.round((today - wkStart) / 864e5) + 1;
-    const left = 7 - elapsed;
+    // A past week is fully elapsed by definition; only the real current week
+    // can be partway through, so only it gets "N days left" / pacing language.
+    const elapsed = isCurrentWeek
+      ? Math.max(1, Math.min(7, Math.round((today - wkStart) / 864e5) + 1))
+      : 7;
+    const left = isCurrentWeek ? 7 - elapsed : 0;
     const expected = (target / 7) * elapsed;
     const onPace = week.n >= expected;
+
+    // How far back navigation is allowed to go — the server only scans
+    // `lookbackDays` back, so earlier weeks would just show misleading zeros.
+    const earliestIso = iso(addDays(today, -(p.lookbackDays || 300)));
+    const canGoBackWeek = iso(addDays(wkStart, -7)) >= earliestIso;
 
     const dayCells = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(wkStart, i);
@@ -947,8 +968,11 @@
         <span class="ctflag">TARGET ${target}/WEEK</span></div>`;
     }
 
+    // Highlights whichever bar matches what the hero/KPI panel is currently
+    // showing — the visual confirmation that clicking it actually did something.
+    const selectedIso = rGran === 'weekly' ? selectedWeekStart : rGran === 'monthly' ? selectedMonthStart : null;
     const bars = bs.map((b) => `
-      <div class="cslot ${b.n ? '' : 'zero'} ${showTarget && b.n >= target ? 'hit' : ''} ${b.current ? 'partial' : ''}"
+      <div class="cslot ${b.n ? '' : 'zero'} ${showTarget && b.n >= target ? 'hit' : ''} ${b.current ? 'partial' : ''} ${iso(b.start) === selectedIso ? 'selected' : ''}"
            data-start="${iso(b.start)}" data-end="${iso(b.end)}" data-label="${esc(bucketPlain(b))}">
         <div class="cval">${b.n}</div>
         <div class="cbar" style="height:${(b.n / max) * 100}%"></div>
@@ -958,26 +982,39 @@
       ${bucketLabel(b)}${b.current ? '<br><span style="font-size:9px">so far</span>' : ''}</div>`).join('');
 
     const totalCharter = bs.reduce((s, b) => s + b.charter, 0);
-    const kpiHtml = rGran === 'daily' ? '' : buildKpiPanel(p, today, wkStart, wkEnd, elapsed, target);
+    const kpiHtml = rGran === 'daily' ? '' : buildKpiPanel(p, today, wkStart, wkEnd, elapsed, target, isCurrentWeek);
+
+    const subLabel = isCurrentWeek
+      ? `Day <b>${elapsed}</b> of 7${left > 0 ? ` · ${left} day${left > 1 ? 's' : ''} left` : ' · final day'}`
+      : 'Full week · completed';
+    const paceLine = hit
+      ? '✓ Target reached'
+      : isCurrentWeek
+        ? (onPace ? `On pace · ${(target - week.n)} to go` : `Behind pace · ${(target - week.n)} to go (expected ~${expected.toFixed(0)} by now)`)
+        : `Target missed by ${target - week.n}`;
+    const paceClass = hit ? 'ok' : (isCurrentWeek ? (onPace ? 'ok' : 'behind') : 'behind');
 
     $('reportWrap').innerHTML = `
       <div class="rtop">
         <div class="panel">
-          <div class="ptitle">This week · ${wkStart.getUTCDate()} ${MON[wkStart.getUTCMonth()]} – ${wkEnd.getUTCDate()} ${MON[wkEnd.getUTCMonth()]}</div>
+          <div class="pnav">
+            <button class="navbtn" id="wkPrev" aria-label="Previous week" ${canGoBackWeek ? '' : 'disabled'}>‹</button>
+            <div class="ptitle" style="margin:0">${isCurrentWeek ? 'This week' : 'Week of'} · ${wkStart.getUTCDate()} ${MON[wkStart.getUTCMonth()]} – ${wkEnd.getUTCDate()} ${MON[wkEnd.getUTCMonth()]}</div>
+            <button class="navbtn" id="wkNext" aria-label="Next week" ${isCurrentWeek ? 'disabled' : ''}>›</button>
+            ${isCurrentWeek ? '' : '<button class="navbtn navbtn-today" id="wkToday">Today</button>'}
+          </div>
           <div class="hero ${hit ? 'hit' : ''}">
             <span class="big">${week.n}</span><span class="of">/ ${target} bookings</span>
           </div>
           <div class="htrack"><div class="hfill ${hit ? 'hit' : ''}" style="width:${pct}%"></div></div>
-          <div class="hsub">Day <b>${elapsed}</b> of 7${left > 0 ? ` · ${left} day${left > 1 ? 's' : ''} left` : ' · final day'}</div>
-          <div class="pace ${onPace ? 'ok' : 'behind'}">
-            ${hit ? '✓ Target reached'
-              : onPace ? `On pace · ${(target - week.n)} to go`
-              : `Behind pace · ${(target - week.n)} to go (expected ~${expected.toFixed(0)} by now)`}
+          <div class="hsub">${subLabel}</div>
+          <div class="pace ${paceClass}">
+            ${paceLine}
           </div>
         </div>
 
         <div class="panel">
-          <div class="ptitle">Daily progress this week</div>
+          <div class="ptitle">${isCurrentWeek ? 'Daily progress this week' : 'Daily progress that week'}</div>
           <div class="days">${dayCells}</div>
         </div>
       </div>
@@ -1007,6 +1044,7 @@
       </div>`;
 
     bindReportInteractions(p);
+    bindPeriodNav();
 
     $('granSeg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       rGran = b.dataset.g;
@@ -1023,7 +1061,7 @@
   function bindReportInteractions(p) {
     const tip = $('tip');
 
-    function tipHtml(rows, label, charter) {
+    function tipHtml(rows, label, charter, jumpHint) {
       const total = rows.reduce((s, r) => s + r.n, 0);
       if (!total) return `<div class="tt">${esc(label)}</div><div class="tk">No bookings in this period</div>`;
       const shown = rows.filter((r) => r.n > 0).slice(0, 5);
@@ -1032,7 +1070,7 @@
         <div class="tk">${total} booking${total > 1 ? 's' : ''} · ${rows.filter((r) => r.n > 0).length} trip${rows.filter((r) => r.n > 0).length > 1 ? 's' : ''}${charter ? ' · incl. charters' : ''}</div>
         ${shown.map((r) => `<div class="trow"><span>${esc(r.trip)}${r.charter ? ' 🏫' : ''}</span><b>+${r.n}</b></div>`).join('')}
         ${rest > 0 ? `<div class="more">+${rest} more trip${rest > 1 ? 's' : ''}</div>` : ''}
-        <div class="hint">Click for full details</div>`;
+        <div class="hint">${jumpHint}</div>`;
     }
 
     function moveTip(e) {
@@ -1051,44 +1089,62 @@
       if (!container) return;
       const from = D(container.dataset.start), to = D(container.dataset.end);
       const rows = tripBreakdown(p.events, from, to, rCharters);
+      const jumpHint = rGran === 'monthly' ? 'Click to view this month'
+        : rGran === 'weekly' ? 'Click to view this week'
+        : 'Click to jump to this week';
 
       bar.addEventListener('mouseenter', () => {
-        tip.innerHTML = tipHtml(rows, container.dataset.label, rCharters);
+        tip.innerHTML = tipHtml(rows, container.dataset.label, rCharters, jumpHint);
         tip.classList.add('on');
       });
       bar.addEventListener('mousemove', moveTip);
       bar.addEventListener('mouseleave', () => tip.classList.remove('on'));
+      // Clicking a bar filters the whole report to that exact period, rather
+      // than popping up a separate view of it — the hero, daily strip, and
+      // KPI panel all switch to show that bar's data in place.
       bar.addEventListener('click', () => {
         tip.classList.remove('on');
-        openReportModal(container.dataset.label, rows, rCharters);
+        if (rGran === 'monthly') {
+          selectedMonthStart = container.dataset.start;
+        } else if (rGran === 'weekly') {
+          selectedWeekStart = container.dataset.start;
+        } else {
+          selectedWeekStart = iso(sundayOf(D(container.dataset.start)));
+        }
+        renderReport();
       });
     });
   }
 
-  function openReportModal(label, rows, charter) {
-    const withBookings = rows.filter((r) => r.n > 0);
-    const total = withBookings.reduce((s, r) => s + r.n, 0);
+  function bindPeriodNav() {
+    const wkPrev = $('wkPrev'), wkNext = $('wkNext'), wkToday = $('wkToday');
+    if (wkPrev) wkPrev.addEventListener('click', () => {
+      selectedWeekStart = iso(addDays(D(selectedWeekStart), -7)); renderReport();
+    });
+    if (wkNext) wkNext.addEventListener('click', () => {
+      selectedWeekStart = iso(addDays(D(selectedWeekStart), 7)); renderReport();
+    });
+    if (wkToday) wkToday.addEventListener('click', () => {
+      selectedWeekStart = report.weekStart; renderReport();
+    });
 
-    $('modalBody').innerHTML = `
-      <div class="mtitle">${esc(label)}</div>
-      <div class="msub">${total} booking${total !== 1 ? 's' : ''} across ${withBookings.length} trip${withBookings.length !== 1 ? 's' : ''}${charter ? ' (incl. charters)' : ' (retail only)'}</div>
-      ${withBookings.length ? withBookings.map((r) => `
-        <div class="mrow">
-          <div class="mrow-top">
-            <span class="mtrip">${esc(r.trip)}${r.charter ? ' 🏫' : ''}</span>
-            <span class="mcount ${r.charter ? 'charter' : ''}">+${r.n}</span>
-          </div>
-          <div class="mwhen">${r.bookings.map((b) => esc(fmtOman(b.at)) + (b.n > 1 ? ` (+${b.n})` : '')).join(' · ')}</div>
-          ${r.c ? `<div class="mcancel">${r.c} cancelled in this period</div>` : ''}
-        </div>`).join('') : '<div class="mempty">No bookings in this period.</div>'}`;
-
-    $('modalBackdrop').hidden = false;
+    const moPrev = $('moPrev'), moNext = $('moNext'), moToday = $('moToday');
+    if (moPrev) moPrev.addEventListener('click', () => {
+      const d = D(selectedMonthStart);
+      selectedMonthStart = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)));
+      renderReport();
+    });
+    if (moNext) moNext.addEventListener('click', () => {
+      const d = D(selectedMonthStart);
+      selectedMonthStart = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)));
+      renderReport();
+    });
+    if (moToday) moToday.addEventListener('click', () => {
+      const d = D(report.today);
+      selectedMonthStart = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
+      renderReport();
+    });
   }
-
-  function closeReportModal() { $('modalBackdrop').hidden = true; }
-  $('modalClose').addEventListener('click', closeReportModal);
-  $('modalBackdrop').addEventListener('click', (e) => { if (e.target.id === 'modalBackdrop') closeReportModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeReportModal(); });
 
   async function loadReport(force) {
     try {
