@@ -82,7 +82,10 @@
     background: var(--card); border: 1px solid var(--line);
     border-radius: 10px; padding: 13px 14px 12px; position: relative;
   }
-  .trip.done { opacity: .62; }
+  /* Sold out is good news, not a faded/broken state — no dimming, a clear
+     green badge instead, same treatment as the red CANCELLED tag. */
+  .trip.done { border-color: var(--fill-full); }
+  .tag.soldout { background: var(--fill-full); color: #06301f; }
   .trip.cancelled {
     background: var(--danger-bg); border-color: var(--danger);
   }
@@ -360,6 +363,33 @@
   /* Listeners bind to the bar shapes themselves, not the full-height column,
      so hovering empty space above a short bar doesn't trigger the tooltip. */
   .cbar, .dbar { cursor: pointer; }
+
+  /* ---------- click popup: full breakdown for one period ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(10,18,32,.6);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal {
+    position: relative; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .modal-close {
+    position: absolute; top: 12px; right: 14px; background: transparent; border: 0;
+    color: var(--text-3); font-size: 22px; line-height: 1; cursor: pointer; padding: 4px;
+  }
+  .modal-close:hover { color: var(--text); }
+  .mtitle { font-size: 16px; font-weight: 700; margin: 0 0 3px; padding-right: 20px; }
+  .msub { font-size: 12px; color: var(--text-2); margin-bottom: 16px; }
+  .mrow { padding: 10px 0; border-bottom: 1px solid #2a4568; }
+  .mrow:last-child { border-bottom: 0; }
+  .mrow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .mtrip { font-weight: 700; font-size: 13.5px; }
+  .mcount { font-weight: 700; font-size: 14px; color: var(--yellow); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mcount.charter { color: #8fb3e0; }
+  .mwhen { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+  .mempty { color: var(--text-3); font-size: 13px; padding: 12px 0; }
+  .mcancel { color: var(--danger); font-size: 11px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -378,12 +408,15 @@
       <div class="stat"><div class="n" id="sTrips">—</div><div class="l">Departures</div></div>
       <div class="stat"><div class="n" id="sWeeks">—</div><div class="l">Weeks</div></div>
       <div class="stat"><div class="n ok" id="sMet">—</div><div class="l">At target</div></div>
-      <div class="stat" id="sNewWrap" hidden><div class="n fresh" id="sNew">—</div><div class="l">New in 24h</div></div>
+      <div class="stat" id="sNewWrap"><div class="n" id="sNew">—</div><div class="l">New in 24h</div></div>
     </div>
     <div class="tools">
       <span class="dot" id="dot" title="Live"></span>
-      <button class="btn" id="reportBtn" aria-pressed="false">Report</button>
-      <button class="btn" id="tableBtn" aria-pressed="false">Table</button>
+      <div class="seg" id="viewSeg">
+        <button data-view="board" aria-pressed="true">Dashboard</button>
+        <button data-view="report" aria-pressed="false">Report</button>
+        <button data-view="table" aria-pressed="false">Table</button>
+      </div>
       <button class="btn" id="refreshBtn">Refresh</button>
     </div>
   </div>
@@ -403,6 +436,13 @@
   <div class="msg" id="msg">Loading booking data…</div>
   <div class="tip" id="tip" role="status"></div>
 
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
 <script>
   const POLL_MS = 30000;   // server caches upstream calls, so this stays cheap
   const $ = (id) => document.getElementById(id);
@@ -410,6 +450,30 @@
   let showTable = false;
   let view = 'board';   // 'board' | 'table' | 'report'
   let latest = null;
+
+  // Which tab and which Report period the screen was on — restored on load
+  // so a refresh (or the wall display losing power overnight) doesn't reset
+  // whoever's looking at it back to the very beginning.
+  const STORAGE_KEY = 'bookingProgressView';
+  function saveViewState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        view, rGran, rCount, selectedWeekStart, selectedMonthStart,
+      }));
+    } catch (e) { /* storage unavailable (private mode, etc.) — just skip persisting */ }
+  }
+  function loadViewState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.view) view = s.view;
+      if (s.rGran) rGran = s.rGran;
+      if (s.rCount) rCount = s.rCount;
+      if (s.selectedWeekStart) selectedWeekStart = s.selectedWeekStart;
+      if (s.selectedMonthStart) selectedMonthStart = s.selectedMonthStart;
+    } catch (e) { /* corrupt or blocked storage — fall back to defaults */ }
+  }
 
   const D = (iso) => new Date(iso + 'T00:00:00Z');
   const day = (iso) => D(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -495,6 +559,7 @@
       <div class="trip ${cls}">
         <div class="thead">
           <div class="tname">${esc(t.name)}${t.cancelled ? '<span class="tag">CANCELLED</span>' : ''}${
+            soldOut && !t.cancelled ? '<span class="tag soldout">SOLD OUT</span>' : ''}${
             newCount && !t.cancelled
               ? `<span class="newbadge">${newCount} NEW</span>` : ''}</div>
           <div class="tnum">
@@ -547,12 +612,12 @@
     $('sWeeks').textContent = p.weekCount;
     $('sMet').textContent = p.weeksAtTarget;
 
-    // The counter only exists while something is actually new, so a quiet day
-    // shows a quiet header instead of a permanent zero.
+    // Always visible, same as the other stats — a vanishing counter reads as
+    // "this feature broke," not "nothing's new."
     const newTotal = trips.reduce((sum, t) =>
       sum + (t.cancelled ? 0 : t.weeks.reduce((s, w) => s + freshness(w).count, 0)), 0);
     $('sNew').textContent = newTotal;
-    $('sNewWrap').hidden = newTotal === 0;
+    $('sNew').className = 'n' + (newTotal > 0 ? ' fresh' : '');
 
     $('notes').innerHTML = (p.warnings || []).length
       ? '<b>Needs attention in WeTravel:</b> ' + p.warnings.map((w) => esc(w.title) + ' — ' + esc(w.issue)).join(' · ')
@@ -704,17 +769,25 @@
     return Number.isFinite(ms) ? new Date(ms + OMAN_OFFSET_MS).toISOString().slice(0, 10) : isoTimestamp.slice(0, 10);
   };
 
-  // Which trips booked within this period, and how many each — what the
-  // hover tooltip is built from.
+  // Muscat wall-clock time for a single booking's timestamp, for the popup —
+  // the bucketing math uses the +4h shift trick, but for display the browser's
+  // built-in Intl timezone support reads more naturally.
+  const fmtOman = (isoTimestamp) => new Date(isoTimestamp).toLocaleString('en-GB', {
+    timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+
+  // Which trips booked within this period, and how many each, plus the exact
+  // timestamps — the hover tooltip uses the totals, the click popup uses all of it.
   function tripBreakdown(events, from, to, charters) {
     const a = iso(from), z = iso(to);
     const byTrip = new Map();
     for (const e of events) {
       if (omanDay(e.at) < a || omanDay(e.at) > z) continue;
       if (e.x && !charters) continue;
-      if (!byTrip.has(e.t)) byTrip.set(e.t, { trip: e.t, n: 0, c: 0, charter: !!e.x });
+      if (!byTrip.has(e.t)) byTrip.set(e.t, { trip: e.t, n: 0, c: 0, charter: !!e.x, bookings: [] });
       const row = byTrip.get(e.t);
       row.n += e.n; row.c += e.c;
+      if (e.n > 0) row.bookings.push({ at: e.at, n: e.n });
     }
     return Array.from(byTrip.values()).sort((x, y) => y.n - x.n);
   }
@@ -1054,6 +1127,11 @@
     $('rangeSeg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       rCount = Number(b.dataset.n); renderReport();
     }));
+
+    // Every path that changes what Report is showing (filters, nav arrows,
+    // clicking a bar) routes through a renderReport() call, so saving here
+    // catches all of them in one place.
+    saveViewState();
   }
 
   // Hover for a quick read, click for the full list — both driven by the same
@@ -1089,9 +1167,7 @@
       if (!container) return;
       const from = D(container.dataset.start), to = D(container.dataset.end);
       const rows = tripBreakdown(p.events, from, to, rCharters);
-      const jumpHint = rGran === 'monthly' ? 'Click to view this month'
-        : rGran === 'weekly' ? 'Click to view this week'
-        : 'Click to jump to this week';
+      const jumpHint = 'Click for full details';
 
       bar.addEventListener('mouseenter', () => {
         tip.innerHTML = tipHtml(rows, container.dataset.label, rCharters, jumpHint);
@@ -1099,9 +1175,9 @@
       });
       bar.addEventListener('mousemove', moveTip);
       bar.addEventListener('mouseleave', () => tip.classList.remove('on'));
-      // Clicking a bar filters the whole report to that exact period, rather
-      // than popping up a separate view of it — the hero, daily strip, and
-      // KPI panel all switch to show that bar's data in place.
+      // Clicking a bar does two things at once: filters the hero/daily-strip/
+      // KPI panel to that exact period in place, AND opens a popup with the
+      // full per-trip, per-booking breakdown as extra detail on top of that.
       bar.addEventListener('click', () => {
         tip.classList.remove('on');
         if (rGran === 'monthly') {
@@ -1112,9 +1188,35 @@
           selectedWeekStart = iso(sundayOf(D(container.dataset.start)));
         }
         renderReport();
+        openReportModal(container.dataset.label, rows, rCharters);
       });
     });
   }
+
+  function openReportModal(label, rows, charter) {
+    const withBookings = rows.filter((r) => r.n > 0);
+    const total = withBookings.reduce((s, r) => s + r.n, 0);
+
+    $('modalBody').innerHTML = `
+      <div class="mtitle">${esc(label)}</div>
+      <div class="msub">${total} booking${total !== 1 ? 's' : ''} across ${withBookings.length} trip${withBookings.length !== 1 ? 's' : ''}${charter ? ' (incl. charters)' : ' (retail only)'}</div>
+      ${withBookings.length ? withBookings.map((r) => `
+        <div class="mrow">
+          <div class="mrow-top">
+            <span class="mtrip">${esc(r.trip)}${r.charter ? ' 🏫' : ''}</span>
+            <span class="mcount ${r.charter ? 'charter' : ''}">+${r.n}</span>
+          </div>
+          <div class="mwhen">${r.bookings.map((b) => esc(fmtOman(b.at)) + (b.n > 1 ? ` (+${b.n})` : '')).join(' · ')}</div>
+          ${r.c ? `<div class="mcancel">${r.c} cancelled in this period</div>` : ''}
+        </div>`).join('') : '<div class="mempty">No bookings in this period.</div>'}`;
+
+    $('modalBackdrop').hidden = false;
+  }
+
+  function closeReportModal() { $('modalBackdrop').hidden = true; }
+  $('modalClose').addEventListener('click', closeReportModal);
+  $('modalBackdrop').addEventListener('click', (e) => { if (e.target.id === 'modalBackdrop') closeReportModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeReportModal(); });
 
   function bindPeriodNav() {
     const wkPrev = $('wkPrev'), wkNext = $('wkNext'), wkToday = $('wkToday');
@@ -1160,10 +1262,13 @@
 
   /* ================= view switching ================= */
 
+  // Explicit target, not a toggle — Dashboard is always one click away from
+  // Report or Table, rather than requiring "click the same tab again to go back."
   function setView(next) {
-    view = view === next ? 'board' : next;
-    $('reportBtn').setAttribute('aria-pressed', String(view === 'report'));
-    $('tableBtn').setAttribute('aria-pressed', String(view === 'table'));
+    view = next;
+    $('viewSeg').querySelectorAll('button').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.view === view));
+    });
     $('board').hidden = view !== 'board';
     $('legend').hidden = view !== 'board';
     $('reportWrap').hidden = view !== 'report';
@@ -1173,14 +1278,22 @@
       if (!report) $('reportWrap').innerHTML = '<div class="msg">Loading report…</div>';
       loadReport(false);
     }
+    saveViewState();
   }
 
-  $('reportBtn').addEventListener('click', () => setView('report'));
-  $('tableBtn').addEventListener('click', () => setView('table'));
+  $('viewSeg').querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => setView(b.dataset.view));
+  });
   $('refreshBtn').addEventListener('click', () => {
     load(true);
     if (view === 'report') loadReport(true);
   });
+
+  // Restore whichever tab/filter/period the screen was showing before this
+  // load, so a refresh (or the wall display losing power overnight) picks up
+  // where it left off instead of resetting to the very beginning.
+  loadViewState();
+  setView(view);
 
   load(false);
   setInterval(() => load(false), POLL_MS);
