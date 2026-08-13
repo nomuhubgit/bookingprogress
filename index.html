@@ -19,6 +19,10 @@
     --target: #ef8b3c;
     --danger: #e0483d;
     --danger-bg: #3a2230;
+    --soldout: var(--yellow);
+    --info: #4d9de0;
+    --info-bg: rgba(77,157,224,.10);
+    --info-line: rgba(77,157,224,.4);
     --fresh: #3ddc84;
     --fresh-bright: #8bf0b8;
     --fresh-dim: #1e5c3d;
@@ -84,8 +88,8 @@
   }
   /* Sold out is good news, not a faded/broken state — no dimming, a clear
      green badge instead, same treatment as the red CANCELLED tag. */
-  .trip.done { border-color: var(--fill-full); }
-  .tag.soldout { background: var(--fill-full); color: #06301f; }
+  .trip.done { border-color: var(--soldout); }
+  .tag.soldout { background: var(--soldout); color: var(--navy); }
   .trip.cancelled {
     background: var(--danger-bg); border-color: var(--danger);
   }
@@ -99,7 +103,7 @@
   .tname { font-size: 14.5px; font-weight: 700; line-height: 1.25; flex: 1; min-width: 0; }
   .tnum { text-align: right; line-height: 1; white-space: nowrap; }
   .tnum .b { font-size: 22px; font-weight: 700; }
-  .tnum .b.full { color: var(--fill-full); }
+  .tnum .b.full { color: var(--soldout); }
   .tnum .b.none { color: var(--text-3); }
   .tnum .s { font-size: 10px; color: var(--text-3); margin-top: 3px; }
   .tmeta { font-size: 11px; color: var(--text-3); margin-bottom: 11px; }
@@ -117,7 +121,7 @@
   .wdate { font-size: 10.5px; color: var(--text-3); font-weight: 400; margin-left: 5px; }
   .wnum { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .wnum .of { color: var(--text-3); font-weight: 500; }
-  .wnum.full { color: var(--fill-full); }
+  .wnum.full { color: var(--soldout); }
   .wnum.none { color: var(--text-3); }
 
   .track {
@@ -125,7 +129,7 @@
     background: var(--track); border-radius: 5px; overflow: hidden;
   }
   .fill { height: 100%; border-radius: 5px; background: var(--fill); transition: width .35s ease; }
-  .fill.full { background: var(--fill-full); }
+  .fill.full { background: var(--soldout); }
   .fill.none { background: transparent; }
   /* where the goal sits, so a short track reads as "can't get there" */
   .tick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--target); }
@@ -341,6 +345,18 @@
   .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--text-3); margin-bottom: 16px; }
   .legend i { display: inline-block; width: 20px; height: 8px; border-radius: 4px; vertical-align: -1px; margin-right: 5px; }
 
+  /* Manual notices from Operations — a distinct blue so it never reads as a
+     status color (green/yellow/red already mean sold out, new, cancelled). */
+  .announce {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--info-bg); border: 1px solid var(--info-line);
+    border-left: 4px solid var(--info);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+  }
+  .announce-icon { font-size: 19px; line-height: 1.3; flex: none; }
+  .announce-title { font-weight: 800; font-size: 14px; color: #fff; margin-bottom: 4px; }
+  .announce-body { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
+
   [hidden] { display: none !important; }
   .msg { padding: 24px 4px; color: var(--text-2); font-size: 14px; }
   .msg.err { color: #ffbfa8; }
@@ -421,12 +437,20 @@
     </div>
   </div>
 
+  <div class="announce" id="announce" hidden>
+    <div class="announce-icon">📢</div>
+    <div>
+      <div class="announce-title">ZNZ | Explore – Seat Update</div>
+      <div class="announce-body">We are still open to accepting participants for this trip. The Operations Team will monitor availability and provide updates on any additional accommodation options that may become available. For now the participants can enlist themselves in the waitlist</div>
+    </div>
+  </div>
+
   <div class="legend" id="legend" hidden>
     <span><i style="background:#f5b935"></i>Booking</span>
-    <span><i style="background:#56b98a"></i>Sold out</span>
+    <span><i style="background:var(--soldout)"></i>Sold out</span>
     <span><i style="background:#16294a;border:1px solid #34517c"></i>Empty</span>
     <span><i style="background:#ef8b3c;width:3px"></i>Target marker</span>
-    <span><i style="background:#45cde0"></i>New booking (last 24h)</span>
+    <span><i style="background:var(--fresh)"></i>New booking (last 24h)</span>
   </div>
 
   <div id="board"></div>
@@ -579,7 +603,7 @@
     const trips = p.trips || [];
     if (!trips.length) {
       $('msg').textContent = 'No departures between today and ' + p.seasonEnd + '.';
-      $('msg').hidden = false; $('board').hidden = true; $('legend').hidden = true;
+      $('msg').hidden = false; $('board').hidden = true; $('legend').hidden = true; $('announce').hidden = true;
       return;
     }
     $('msg').hidden = true;
@@ -587,6 +611,7 @@
     // Report or Table view on the next refresh.
     $('board').hidden = view !== 'board';
     $('legend').hidden = view !== 'board';
+    $('announce').hidden = view !== 'board';
 
     // group cards under the month they depart in, keeping date order
     const months = [];
@@ -1271,6 +1296,7 @@
     });
     $('board').hidden = view !== 'board';
     $('legend').hidden = view !== 'board';
+    $('announce').hidden = view !== 'board';
     $('reportWrap').hidden = view !== 'report';
     $('tableWrap').hidden = view !== 'table';
     showTable = view === 'table';
