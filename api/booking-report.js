@@ -94,11 +94,13 @@ async function build() {
       if (!Number.isFinite(at) || at > nowMs) continue;
       const active = order.active_count || 0;
       const cancelled = order.cancelled_count || 0;
-      if (active === 0 && cancelled === 0) continue;
+      const rebooked = order.rebooked_count || 0;
+      if (active === 0 && cancelled === 0 && rebooked === 0) continue;
       events.push({
         at: order.created_at,
         n: active,
         c: cancelled,
+        r: rebooked,
         t: name,
         u: trip.uuid,
         x: charter || undefined,
