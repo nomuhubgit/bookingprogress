@@ -221,6 +221,13 @@
   }
   .seg button[aria-pressed="true"] { background: var(--yellow); color: var(--navy); font-weight: 700; }
   .fnote { font-size: 11px; color: var(--text-3); margin-left: auto; }
+  .tzbadge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(242,178,51,.14); border: 1px solid rgba(242,178,51,.35);
+    color: var(--yellow); font-size: 12px; font-weight: 600;
+    padding: 6px 12px; border-radius: 20px; margin-bottom: 14px;
+  }
+  .tzbadge b { font-weight: 800; }
 
   .chart { position: relative; height: 230px; padding-left: 30px; }
   .crule { position: absolute; left: 30px; right: 0; height: 1px; background: rgba(255,255,255,.07); }
@@ -301,7 +308,9 @@
   .tip .more { color: var(--text-3); font-size: 11px; margin-top: 3px; }
   .tip .hint { color: var(--text-3); font-size: 10.5px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
 
-  .cslot, .dcell { cursor: pointer; }
+  /* Listeners bind to the bar shapes themselves, not the full-height column,
+     so hovering empty space above a short bar doesn't trigger the tooltip. */
+  .cbar, .dbar { cursor: pointer; }
 
   /* ---------- click popup: full breakdown for one period ---------- */
   .modal-backdrop {
@@ -616,7 +625,11 @@
   let report = null;
   let rGran = 'weekly';      // Muatasam's headline number is the weekly one
   let rCount = 4;            // "actual weekly for last 4 weeks"
-  let rCharters = false;     // corporate charters aren't retail sales
+  // Corporate/institutional charters (KUMSA, CISCO, University of Sharjah)
+  // are always excluded from the target — one charter can book a dozen seats
+  // in a single week and make it look like a retail target was hit when it
+  // wasn't, so there's no toggle to turn this back on.
+  const rCharters = false;
 
   const iso = (d) => d.toISOString().slice(0, 10);
   const addDays = (d, n) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
@@ -799,12 +812,9 @@
             ${RANGES[rGran].map((n) =>
               `<button data-n="${n}" aria-pressed="${n === rCount}">Last ${n}</button>`).join('')}
           </div>
-          <div class="seg" id="chSeg">
-            <button data-ch="0" aria-pressed="${!rCharters}">Retail only</button>
-            <button data-ch="1" aria-pressed="${rCharters}">Incl. charters</button>
-          </div>
-          <div class="fnote">${p.tripsScanned} trips scanned · ${totalCharter} charter booking(s) in range · dates in Muscat time (UTC+4)</div>
+          <div class="fnote">${p.tripsScanned} trips scanned${totalCharter ? ` · ${totalCharter} charter booking(s) excluded` : ''}</div>
         </div>
+        <div class="tzbadge">🕐 All dates and times shown in <b>Muscat, Oman time (UTC+4)</b></div>
         <div class="chart">${chrome}<div class="cbars">${bars}</div></div>
         <div class="caxis">${axis}</div>
         <div class="rlegend">
@@ -823,9 +833,6 @@
     }));
     $('rangeSeg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       rCount = Number(b.dataset.n); renderReport();
-    }));
-    $('chSeg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
-      rCharters = b.dataset.ch === '1'; renderReport();
     }));
   }
 
@@ -854,19 +861,24 @@
       tip.style.left = x + 'px'; tip.style.top = y + 'px';
     }
 
-    document.querySelectorAll('.cslot[data-start], .dcell[data-start]').forEach((el) => {
-      const from = D(el.dataset.start), to = D(el.dataset.end);
+    // Bound to the bar shape itself (.cbar / .dbar), not the full-height column
+    // it sits in — so the tooltip only appears when the cursor is actually
+    // over the drawn bar, not the empty space above a short one.
+    document.querySelectorAll('.cbar, .dbar').forEach((bar) => {
+      const container = bar.closest('[data-start]');
+      if (!container) return;
+      const from = D(container.dataset.start), to = D(container.dataset.end);
       const rows = tripBreakdown(p.events, from, to, rCharters);
 
-      el.addEventListener('mouseenter', () => {
-        tip.innerHTML = tipHtml(rows, el.dataset.label, rCharters);
+      bar.addEventListener('mouseenter', () => {
+        tip.innerHTML = tipHtml(rows, container.dataset.label, rCharters);
         tip.classList.add('on');
       });
-      el.addEventListener('mousemove', moveTip);
-      el.addEventListener('mouseleave', () => tip.classList.remove('on'));
-      el.addEventListener('click', () => {
+      bar.addEventListener('mousemove', moveTip);
+      bar.addEventListener('mouseleave', () => tip.classList.remove('on'));
+      bar.addEventListener('click', () => {
         tip.classList.remove('on');
-        openReportModal(el.dataset.label, rows, rCharters);
+        openReportModal(container.dataset.label, rows, rCharters);
       });
     });
   }
