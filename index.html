@@ -19,7 +19,7 @@
     --target: #ef8b3c;
     --danger: #e0483d;
     --danger-bg: #3a2230;
-    --soldout: var(--yellow);
+    --soldout: #e0791f;
     --info: #4d9de0;
     --info-bg: rgba(77,157,224,.10);
     --info-line: rgba(77,157,224,.4);
@@ -346,16 +346,22 @@
   .legend i { display: inline-block; width: 20px; height: 8px; border-radius: 4px; vertical-align: -1px; margin-right: 5px; }
 
   /* Manual notices from Operations — a distinct blue so it never reads as a
-     status color (green/yellow/red already mean sold out, new, cancelled). */
+     status color (green/yellow/red already mean sold out, new, cancelled).
+     Bold on purpose: this has to win against a room full of trip cards. */
   .announce {
-    display: flex; gap: 12px; align-items: flex-start;
-    background: var(--info-bg); border: 1px solid var(--info-line);
-    border-left: 4px solid var(--info);
-    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+    display: flex; gap: 14px; align-items: flex-start;
+    background: linear-gradient(155deg, rgba(77,157,224,.22), rgba(77,157,224,.08) 65%);
+    border: 1.5px solid var(--info);
+    border-left: 6px solid var(--info);
+    border-radius: 10px; padding: 16px 20px; margin-bottom: 18px;
+    box-shadow: 0 0 0 1px rgba(77,157,224,.15), 0 6px 20px rgba(77,157,224,.18);
   }
-  .announce-icon { font-size: 19px; line-height: 1.3; flex: none; }
-  .announce-title { font-weight: 800; font-size: 14px; color: #fff; margin-bottom: 4px; }
-  .announce-body { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
+  .announce-icon { font-size: 26px; line-height: 1.2; flex: none; }
+  .announce-title {
+    font-weight: 800; font-size: 16.5px; color: #fff; margin-bottom: 5px;
+    letter-spacing: .01em;
+  }
+  .announce-body { font-size: 13.5px; color: var(--text); line-height: 1.6; }
 
   [hidden] { display: none !important; }
   .msg { padding: 24px 4px; color: var(--text-2); font-size: 14px; }
