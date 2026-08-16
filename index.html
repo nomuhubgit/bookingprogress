@@ -280,17 +280,9 @@
   .rlegend { display: flex; gap: 15px; flex-wrap: wrap; font-size: 10.5px; color: var(--text-3); margin-top: 12px; }
   .rlegend i { display: inline-block; width: 16px; height: 8px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
 
-  /* ---------- weekly/monthly KPI summary ---------- */
-  .kpi { margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
-  .kpi-head { background: var(--card-2); padding: 10px 16px; }
-  .kpi-head .kt { font-size: 12.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #fff; }
-  .kpi-head .ks { font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
-  .kpi-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-
-  /* ---------- period navigation (hero panel + monthly KPI head) ---------- */
+  /* ---------- period navigation (This week hero panel) ---------- */
   .pnav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .pnav .ptitle { flex: 1; }
-  .pnav-kpi { margin-bottom: 0; }
   .navbtn {
     background: transparent; border: 1px solid var(--line); color: var(--text-2);
     width: 24px; height: 24px; border-radius: 6px; font-size: 14px; line-height: 1;
@@ -301,29 +293,16 @@
   .navbtn-today {
     width: auto; padding: 0 9px; font-size: 10.5px; font-weight: 700;
   }
-  .kpi-body { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
-  @media (max-width: 760px) { .kpi-body { grid-template-columns: 1fr; } }
-  .kpi-col { background: var(--card); padding: 14px 16px; }
-  .kpi-col-title {
-    font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-    color: var(--text-3); margin-bottom: 8px;
+
+  /* ---------- simple 3-stat summary (Last 24h / Last week / Weekly target) ---------- */
+  .skpi-panel { display: flex; gap: 0; }
+  .skpi {
+    flex: 1; text-align: center; padding: 4px 12px;
+    border-right: 1px solid var(--line);
   }
-  .kpi-row {
-    display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    padding: 7px 0; border-bottom: 1px solid #2a4568; font-size: 12.5px;
-  }
-  .kpi-row:last-of-type { border-bottom: 0; }
-  .kpi-row .kl { color: var(--text-2); }
-  .kpi-row .kv { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-  .kpi-row .kv small { display: block; font-size: 10.5px; font-weight: 500; color: var(--text-3); margin-top: 1px; }
-  .kbadge {
-    display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px;
-    border-radius: 20px; margin-left: 8px; white-space: nowrap;
-  }
-  .kbadge.good { background: rgba(86,185,138,.18); color: var(--fill-full); }
-  .kbadge.warn { background: rgba(239,139,60,.18); color: var(--target); }
-  .kbadge.bad { background: rgba(224,72,61,.18); color: var(--danger); }
-  .kformula { font-size: 10.5px; color: var(--text-3); font-style: italic; line-height: 1.55; margin-top: 10px; }
+  .skpi:last-child { border-right: 0; }
+  .skpi-n { font-size: 32px; font-weight: 700; line-height: 1; color: #fff; }
+  .skpi-l { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
 
   /* ---------- table + notes ---------- */
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -825,175 +804,29 @@
     return Array.from(byTrip.values()).sort((x, y) => y.n - x.n);
   }
 
-  // Gross/cancelled/rebooked totals for a period, plus a per-day breakdown
-  // (both the raw total and which trip drove it) — everything the KPI panel
-  // and the "best day/week" lookups need, computed in one pass. Charters are
-  // always excluded, same as the rest of the report.
-  function periodKpis(events, from, to) {
-    const a = iso(from), z = iso(to);
-    let gross = 0, cancelled = 0, rebooked = 0;
-    const perDay = {}, perDayTrip = {};
+  // Bookings placed in the rolling 24h ending now — same "how recent" concept
+  // as the board's freshness badge, but summed across the whole report window
+  // rather than one trip's weeks.
+  function last24hTotal(events) {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    let n = 0;
     for (const e of events) {
       if (e.x) continue;
-      const day = omanDay(e.at);
-      if (day < a || day > z) continue;
-      const g = (e.n || 0) + (e.c || 0) + (e.r || 0);
-      gross += g; cancelled += e.c || 0; rebooked += e.r || 0;
-      perDay[day] = (perDay[day] || 0) + g;
-      if (!perDayTrip[day]) perDayTrip[day] = new Map();
-      perDayTrip[day].set(e.t, (perDayTrip[day].get(e.t) || 0) + g);
+      const at = Date.parse(e.at);
+      if (Number.isFinite(at) && at >= cutoff && at <= Date.now()) n += e.n;
     }
-    return { gross, cancelled, rebooked, net: gross - cancelled, perDay, perDayTrip };
+    return n;
   }
 
-  // Sums a contiguous run of days out of periodKpis()'s per-day maps — used to
-  // roll daily numbers up into a week without a second pass over the events.
-  function sumDays(perDay, perDayTrip, start, end) {
-    let sum = 0;
-    const trips = new Map();
-    for (let d = start; iso(d) <= iso(end); d = addDays(d, 1)) {
-      const key = iso(d);
-      sum += perDay[key] || 0;
-      const dt = perDayTrip[key];
-      if (dt) for (const [t, v] of dt) trips.set(t, (trips.get(t) || 0) + v);
-    }
-    const top = trips.size ? [...trips.entries()].sort((x, y) => y[1] - x[1])[0] : null;
-    return { sum, top };
-  }
-
-  // The Sunday-start weeks that BEGIN inside this month — "how many weeks are
-  // in this month" for target-scaling, and the set the "best week" search
-  // and the axis both need to agree on.
-  function weeksInMonth(monthStart, monthEnd) {
-    const weeks = [];
-    let d = sundayOf(monthStart);
-    while (iso(d) <= iso(monthEnd)) {
-      if (iso(d) >= iso(monthStart)) weeks.push({ start: d, end: addDays(d, 6) });
-      d = addDays(d, 7);
-    }
-    return weeks;
-  }
-
-  function pctOf(n, d) { return d > 0 ? (n / d) * 100 : null; }
-  function fmtPct(v) { return v == null ? '—' : v.toFixed(0) + '%'; }
-
-  // The spreadsheet-style Volume / Key Percentages summary — only meaningful
-  // for a whole week or month, so it's never shown in Daily view (checked by
-  // the caller). Weekly reuses the same current-week bounds as the hero panel
-  // above it; Monthly builds the equivalent for the current calendar month,
-  // with its target scaled to however many Sun–Sat weeks actually fall in it.
-  function buildKpiPanel(p, today, wkStart, wkEnd, elapsed, target, isCurrentWeek) {
-    const isWeekly = rGran === 'weekly';
-    let periodStart, periodEnd, periodDays, periodElapsed, periodTarget, periodLabel, isCurrentPeriod;
-    let canGoBackPeriod = true;
-    const earliestIso = iso(addDays(today, -(p.lookbackDays || 300)));
-
-    if (isWeekly) {
-      periodStart = wkStart; periodEnd = wkEnd; periodDays = 7; periodElapsed = elapsed;
-      periodTarget = target; isCurrentPeriod = isCurrentWeek;
-      periodLabel = `${wkStart.getUTCDate()} ${MON[wkStart.getUTCMonth()]} – ${wkEnd.getUTCDate()} ${MON[wkEnd.getUTCMonth()]} ${wkEnd.getUTCFullYear()}`;
-      canGoBackPeriod = iso(addDays(wkStart, -7)) >= earliestIso;
-    } else {
-      const monthStart = D(selectedMonthStart);
-      const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
-      const realMonthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-      isCurrentPeriod = iso(monthStart) === iso(realMonthStart);
-      periodStart = monthStart; periodEnd = monthEnd;
-      periodDays = monthEnd.getUTCDate();
-      periodElapsed = isCurrentPeriod ? today.getUTCDate() : periodDays;
-      const weeks = weeksInMonth(monthStart, monthEnd);
-      periodTarget = weeks.length * target;
-      periodLabel = `${MON[monthStart.getUTCMonth()]} ${monthStart.getUTCFullYear()} · ${weeks.length} week${weeks.length !== 1 ? 's' : ''} × ${target}`;
-      const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
-      canGoBackPeriod = iso(prevMonthStart) >= earliestIso.slice(0, 7) + '-01';
-    }
-
-    const kpis = periodKpis(p.events, periodStart, periodEnd);
-    const avgPerDay = periodElapsed > 0 ? kpis.gross / periodElapsed : 0;
-    // A finished period has nothing left to search past its own end; the
-    // current one still can't look beyond today (no future data exists anyway).
-    const searchLimit = isCurrentPeriod ? p.today : iso(periodEnd);
-
-    let bestLine = '—';
-    if (isWeekly) {
-      let bv = -1, bl = null, bt = null;
-      for (let i = 0; i < periodElapsed; i++) {
-        const d = addDays(wkStart, i);
-        const v = kpis.perDay[iso(d)] || 0;
-        if (v > bv) { bv = v; bl = DOW[i]; bt = kpis.perDayTrip[iso(d)]; }
-      }
-      if (bv > 0) {
-        const top = bt ? [...bt.entries()].sort((x, y) => y[1] - x[1])[0] : null;
-        bestLine = `${bl}${top ? ` — ${top[0]} (+${top[1]})` : ''}`;
-      }
-    } else {
-      const weeks = weeksInMonth(periodStart, periodEnd).filter((w) => iso(w.start) <= searchLimit);
-      let bv = -1, bl = null, bt = null;
-      for (const w of weeks) {
-        const { sum, top } = sumDays(kpis.perDay, kpis.perDayTrip, w.start, w.end);
-        if (sum > bv) { bv = sum; bl = `${w.start.getUTCDate()}–${w.end.getUTCDate()} ${MON[w.start.getUTCMonth()]}`; bt = top; }
-      }
-      if (bv > 0) bestLine = `${bl}${bt ? ` — ${bt[0]} (+${bt[1]})` : ''}`;
-    }
-
-    const achievement = pctOf(kpis.net, periodTarget);
-    const cancelRate = pctOf(kpis.cancelled, kpis.gross);
-    const recoveryRate = (kpis.cancelled + kpis.rebooked) > 0 ? pctOf(kpis.rebooked, kpis.cancelled + kpis.rebooked) : null;
-    const retention = pctOf(kpis.net, kpis.gross);
-
-    const achBadge = achievement == null ? '' : achievement >= 100 ? '<span class="kbadge good">On target</span>'
-      : achievement >= 50 ? '<span class="kbadge warn">Behind</span>' : '<span class="kbadge bad">At risk</span>';
-    const cancelBadge = cancelRate == null ? '' : cancelRate <= 10 ? '<span class="kbadge good">Healthy</span>'
-      : cancelRate <= 25 ? '<span class="kbadge warn">Watch</span>' : '<span class="kbadge bad">High</span>';
-    const recoveryBadge = recoveryRate == null ? '' : recoveryRate >= 50
-      ? '<span class="kbadge good">Good recovery</span>' : '<span class="kbadge warn">Low recovery</span>';
-    const retentionBadge = retention == null ? '' : retention >= 90 ? '<span class="kbadge good">Strong</span>'
-      : retention >= 75 ? '<span class="kbadge warn">OK</span>' : '<span class="kbadge bad">Weak</span>';
-
-    const daysLoggedText = isCurrentPeriod ? `${periodElapsed} of ${periodDays}` : `${periodDays} (completed)`;
-
+  // Three numbers, no table: Muatasam asked for this in place of the detailed
+  // Volume/Key-Percentages breakdown, which read as too dense for a quick check.
+  function buildSimpleKpi(p, weekTotal, target) {
+    const last24h = last24hTotal(p.events);
     return `
-      <div class="kpi">
-        <div class="kpi-head">
-          <div class="kpi-head-row">
-            <div>
-              <div class="kt">${isWeekly ? 'Weekly' : 'Monthly'} Summary and KPIs</div>
-              <div class="ks">${esc(periodLabel)}${isCurrentPeriod ? ` · Day ${periodElapsed} of ${periodDays}` : ' · completed'}</div>
-            </div>
-            ${isWeekly ? '' : `
-              <div class="pnav pnav-kpi">
-                <button class="navbtn" id="moPrev" aria-label="Previous month" ${canGoBackPeriod ? '' : 'disabled'}>‹</button>
-                <button class="navbtn" id="moNext" aria-label="Next month" ${isCurrentPeriod ? 'disabled' : ''}>›</button>
-                ${isCurrentPeriod ? '' : '<button class="navbtn navbtn-today" id="moToday">This month</button>'}
-              </div>`}
-          </div>
-        </div>
-        <div class="kpi-body">
-          <div class="kpi-col">
-            <div class="kpi-col-title">Volume</div>
-            <div class="kpi-row"><span class="kl">Total Bookings (gross)</span><span class="kv">${kpis.gross}</span></div>
-            <div class="kpi-row"><span class="kl">Total Cancelled</span><span class="kv">${kpis.cancelled || '—'}</span></div>
-            <div class="kpi-row"><span class="kl">Total Rebooked to Other Trip</span><span class="kv">${kpis.rebooked || '—'}</span></div>
-            <div class="kpi-row"><span class="kl">Net Bookings (gross less cancelled)</span><span class="kv">${kpis.net}</span></div>
-            <div class="kpi-row"><span class="kl">${isWeekly ? 'Weekly' : 'Monthly'} Target</span><span class="kv">${periodTarget}</span></div>
-            <div class="kpi-row"><span class="kl">Days Logged</span><span class="kv">${daysLoggedText}</span></div>
-            <div class="kpi-row"><span class="kl">Average Bookings per Day</span><span class="kv">${avgPerDay.toFixed(1)}</span></div>
-            <div class="kpi-row"><span class="kl">Best Booking ${isWeekly ? 'Day' : 'per Week'}</span><span class="kv">${esc(bestLine)}</span></div>
-          </div>
-          <div class="kpi-col">
-            <div class="kpi-col-title">Key Percentages</div>
-            <div class="kpi-row"><span class="kl">Target Achievement</span><span class="kv">${fmtPct(achievement)}${achBadge}</span></div>
-            <div class="kpi-row"><span class="kl">Cancellation Rate</span><span class="kv">${fmtPct(cancelRate)}${cancelBadge}</span></div>
-            <div class="kpi-row"><span class="kl">Rebooking Recovery Rate</span><span class="kv">${fmtPct(recoveryRate)}${recoveryBadge}</span></div>
-            <div class="kpi-row"><span class="kl">Net Retention Rate</span><span class="kv">${fmtPct(retention)}${retentionBadge}</span></div>
-            <div class="kformula">
-              Target Achievement = Net Bookings / ${isWeekly ? 'Weekly' : 'Monthly'} Target.<br>
-              Cancellation Rate = Cancelled / Total Bookings.<br>
-              Rebooking Recovery Rate = Rebooked / (Cancelled + Rebooked). Shows how much of the lost volume was saved by moving people to another trip.<br>
-              Net Retention Rate = (Total Bookings less Cancelled) / Total Bookings.
-            </div>
-          </div>
-        </div>
+      <div class="panel skpi-panel">
+        <div class="skpi"><div class="skpi-n">${last24h}</div><div class="skpi-l">Last 24 Hours</div></div>
+        <div class="skpi"><div class="skpi-n">${weekTotal}</div><div class="skpi-l">Last Week</div></div>
+        <div class="skpi"><div class="skpi-n">${target}</div><div class="skpi-l">Weekly Target</div></div>
       </div>`;
   }
 
@@ -1088,7 +921,7 @@
       ${bucketLabel(b)}${b.current ? '<br><span style="font-size:9px">so far</span>' : ''}</div>`).join('');
 
     const totalCharter = bs.reduce((s, b) => s + b.charter, 0);
-    const kpiHtml = rGran === 'daily' ? '' : buildKpiPanel(p, today, wkStart, wkEnd, elapsed, target, isCurrentWeek);
+    const kpiHtml = buildSimpleKpi(p, week.n, target);
 
     const subLabel = isCurrentWeek
       ? `Day <b>${elapsed}</b> of 7${left > 0 ? ` · ${left} day${left > 1 ? 's' : ''} left` : ' · final day'}`
@@ -1261,23 +1094,6 @@
     });
     if (wkToday) wkToday.addEventListener('click', () => {
       selectedWeekStart = report.weekStart; renderReport();
-    });
-
-    const moPrev = $('moPrev'), moNext = $('moNext'), moToday = $('moToday');
-    if (moPrev) moPrev.addEventListener('click', () => {
-      const d = D(selectedMonthStart);
-      selectedMonthStart = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)));
-      renderReport();
-    });
-    if (moNext) moNext.addEventListener('click', () => {
-      const d = D(selectedMonthStart);
-      selectedMonthStart = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)));
-      renderReport();
-    });
-    if (moToday) moToday.addEventListener('click', () => {
-      const d = D(report.today);
-      selectedMonthStart = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
-      renderReport();
     });
   }
 
