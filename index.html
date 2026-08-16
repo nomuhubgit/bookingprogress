@@ -56,7 +56,6 @@
 
   .stats { display: flex; gap: 24px; align-items: baseline; }
   .stat .n { font-size: 26px; font-weight: 700; line-height: 1; }
-  .stat .n.ok { color: var(--fill-full); }
   .stat .l { font-size: 10.5px; color: var(--text-3); margin-top: 4px; }
 
   .tools { display: flex; align-items: center; gap: 7px; }
@@ -407,11 +406,9 @@
     </div>
     <div class="spacer"></div>
     <div class="stats">
-      <div class="stat"><div class="n" id="sBooked">—</div><div class="l">Travellers booked</div></div>
-      <div class="stat"><div class="n" id="sTrips">—</div><div class="l">Departures</div></div>
-      <div class="stat"><div class="n" id="sWeeks">—</div><div class="l">Weeks</div></div>
-      <div class="stat"><div class="n ok" id="sMet">—</div><div class="l">At target</div></div>
       <div class="stat" id="sNewWrap"><div class="n" id="sNew">—</div><div class="l">New in 24h</div></div>
+      <div class="stat"><div class="n" id="sLastWeek">—</div><div class="l">Last Week</div></div>
+      <div class="stat"><div class="n" id="sWeeklyTarget">—</div><div class="l">Weekly Target</div></div>
     </div>
     <div class="tools">
       <span class="dot" id="dot" title="Live"></span>
@@ -619,17 +616,10 @@
       </section>`;
     }).join('');
 
-    $('sBooked').textContent = p.totalBooked;
-    $('sTrips').textContent = trips.length;
-    $('sWeeks').textContent = p.weekCount;
-    $('sMet').textContent = p.weeksAtTarget;
-
-    // Always visible, same as the other stats — a vanishing counter reads as
-    // "this feature broke," not "nothing's new."
-    const newTotal = trips.reduce((sum, t) =>
-      sum + (t.cancelled ? 0 : t.weeks.reduce((s, w) => s + freshness(w).count, 0)), 0);
-    $('sNew').textContent = newTotal;
-    $('sNew').className = 'n' + (newTotal > 0 ? ' fresh' : '');
+    // The header's New in 24h / Last Week / Weekly Target trio is now sourced
+    // from the Report data (see applyHeaderStats), so it's identical whether
+    // you're looking at the Dashboard or the Report tab — not a second,
+    // slightly-different count computed from the board's own data.
 
     $('notes').innerHTML = (p.warnings || []).length
       ? '<b>Needs attention in WeTravel:</b> ' + p.warnings.map((w) => esc(w.title) + ' — ' + esc(w.issue)).join(' · ')
@@ -818,14 +808,26 @@
     return n;
   }
 
+  // The most recently FINISHED Sun-Sat week — fixed, independent of whatever
+  // week the hero panel is currently navigated to. (Previously this reused
+  // the navigated/current week's own total, so viewing "This week" showed
+  // "Last Week: 0" just because the in-progress week hadn't booked anything
+  // yet, even though the actual prior week had bookings.)
+  function lastCompletedWeekTotal(p) {
+    const start = addDays(D(p.weekStart), -7);
+    const end = addDays(D(p.weekStart), -1);
+    return tally(p.events, start, end, false).n;
+  }
+
   // Three numbers, no table: Muatasam asked for this in place of the detailed
   // Volume/Key-Percentages breakdown, which read as too dense for a quick check.
-  function buildSimpleKpi(p, weekTotal, target) {
+  function buildSimpleKpi(p, target) {
     const last24h = last24hTotal(p.events);
+    const lastWeek = lastCompletedWeekTotal(p);
     return `
       <div class="panel skpi-panel">
         <div class="skpi"><div class="skpi-n">${last24h}</div><div class="skpi-l">Last 24 Hours</div></div>
-        <div class="skpi"><div class="skpi-n">${weekTotal}</div><div class="skpi-l">Last Week</div></div>
+        <div class="skpi"><div class="skpi-n">${lastWeek}</div><div class="skpi-l">Last Week</div></div>
         <div class="skpi"><div class="skpi-n">${target}</div><div class="skpi-l">Weekly Target</div></div>
       </div>`;
   }
@@ -921,7 +923,7 @@
       ${bucketLabel(b)}${b.current ? '<br><span style="font-size:9px">so far</span>' : ''}</div>`).join('');
 
     const totalCharter = bs.reduce((s, b) => s + b.charter, 0);
-    const kpiHtml = buildSimpleKpi(p, week.n, target);
+    const kpiHtml = buildSimpleKpi(p, target);
 
     const subLabel = isCurrentWeek
       ? `Day <b>${elapsed}</b> of 7${left > 0 ? ` · ${left} day${left > 1 ? 's' : ''} left` : ' · final day'}`
@@ -1104,9 +1106,23 @@
       if (!res.ok) throw new Error(p.error || 'request failed');
       report = p;
       renderReport();
+      applyHeaderStats();
     } catch (err) {
       $('reportWrap').innerHTML = `<div class="msg err">Could not load report: ${esc(err.message)}</div>`;
     }
+  }
+
+  // Drives the header's New in 24h / Last Week / Weekly Target. Uses the same
+  // lastCompletedWeekTotal() as the Report tab's panel, so the two can never
+  // show different numbers for the same thing, and neither is affected by
+  // whatever week is navigated to in the Report tab's hero panel.
+  function applyHeaderStats() {
+    if (!report) return;
+    const last24h = last24hTotal(report.events);
+    $('sNew').textContent = last24h;
+    $('sNew').className = 'n' + (last24h > 0 ? ' fresh' : '');
+    $('sLastWeek').textContent = lastCompletedWeekTotal(report);
+    $('sWeeklyTarget').textContent = report.weeklyTarget;
   }
 
   /* ================= view switching ================= */
@@ -1136,7 +1152,7 @@
   });
   $('refreshBtn').addEventListener('click', () => {
     load(true);
-    if (view === 'report') loadReport(true);
+    loadReport(true);
   });
 
   // Restore whichever tab/filter/period the screen was showing before this
@@ -1146,8 +1162,11 @@
   setView(view);
 
   load(false);
+  loadReport(false);
   setInterval(() => load(false), POLL_MS);
-  setInterval(() => { if (view === 'report') loadReport(false); }, 120000);
+  // Unconditional now — the header stats need report data on every tab, not
+  // just while the Report tab itself is open.
+  setInterval(() => loadReport(false), 120000);
   // Re-render between fetches so a highlight lapses at its own 24h mark and the
   // "3h ago" text stays honest, without waiting on the server cache.
   setInterval(() => { if (latest) render(latest); }, 20000);
