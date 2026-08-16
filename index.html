@@ -302,6 +302,7 @@
   .skpi:last-child { border-right: 0; }
   .skpi-n { font-size: 32px; font-weight: 700; line-height: 1; color: #fff; }
   .skpi-l { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+  .skpi-sub { font-size: 10px; color: #6c7f9c; margin-top: 3px; }
 
   /* ---------- table + notes ---------- */
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -820,18 +821,24 @@
 
   // Three numbers, no table: Muatasam asked for this in place of the detailed
   // Volume/Key-Percentages breakdown. Unlike the header's fixed version, this
-  // panel lives inside the Report tab right under the hero, so it tracks
-  // whatever week is navigated to there — "Last Week" is that week's own
-  // total, and "Last 24 Hours" is real-time for the current week but anchored
-  // to that week's own final day once you've navigated to a past week
-  // (otherwise every past week would show today's real-time count, which has
-  // nothing to do with the period on screen).
+  // panel lives inside the Report tab right under the hero, so everything here
+  // is relative to whichever week is navigated to there:
+  //   "Last Week"     = the week BEFORE the selected one (not the selected
+  //                     week itself — the hero right above already shows that,
+  //                     so repeating it was both redundant and mislabelled).
+  //   "Last 24 Hours" = real rolling 24h while on the current week; on a past
+  //                     week it anchors to that week's own final day, since
+  //                     today's live count says nothing about the period shown.
+  // Each carries its date range so there's no ambiguity about what it covers.
   function buildSimpleKpi(p, wkStart, wkEnd, isCurrentWeek, target) {
-    const weekTotal = tally(p.events, wkStart, wkEnd, false).n;
+    const prevStart = addDays(wkStart, -7);
+    const prevEnd = addDays(wkStart, -1);
+    const lastWeek = tally(p.events, prevStart, prevEnd, false).n;
 
-    let last24h;
+    let last24h, last24hLabel;
     if (isCurrentWeek) {
       last24h = last24hTotal(p.events);
+      last24hLabel = 'rolling, up to now';
     } else {
       const anchor = Date.parse(iso(addDays(wkEnd, 1))); // midnight right after that week ends
       const cutoff = anchor - 24 * 60 * 60 * 1000;
@@ -841,13 +848,26 @@
         const at = Date.parse(e.at);
         if (Number.isFinite(at) && at >= cutoff && at < anchor) last24h += e.n;
       }
+      last24hLabel = `final day of ${day(iso(wkEnd))}`;
     }
 
     return `
       <div class="panel skpi-panel">
-        <div class="skpi"><div class="skpi-n">${last24h}</div><div class="skpi-l">Last 24 Hours</div></div>
-        <div class="skpi"><div class="skpi-n">${weekTotal}</div><div class="skpi-l">Last Week</div></div>
-        <div class="skpi"><div class="skpi-n">${target}</div><div class="skpi-l">Weekly Target</div></div>
+        <div class="skpi">
+          <div class="skpi-n">${last24h}</div>
+          <div class="skpi-l">Last 24 Hours</div>
+          <div class="skpi-sub">${esc(last24hLabel)}</div>
+        </div>
+        <div class="skpi">
+          <div class="skpi-n">${lastWeek}</div>
+          <div class="skpi-l">Last Week</div>
+          <div class="skpi-sub">${esc(range(iso(prevStart), iso(prevEnd)))}</div>
+        </div>
+        <div class="skpi">
+          <div class="skpi-n">${target}</div>
+          <div class="skpi-l">Weekly Target</div>
+          <div class="skpi-sub">per week</div>
+        </div>
       </div>`;
   }
 
