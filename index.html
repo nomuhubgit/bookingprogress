@@ -808,11 +808,10 @@
     return n;
   }
 
-  // The most recently FINISHED Sun-Sat week — fixed, independent of whatever
-  // week the hero panel is currently navigated to. (Previously this reused
-  // the navigated/current week's own total, so viewing "This week" showed
-  // "Last Week: 0" just because the in-progress week hadn't booked anything
-  // yet, even though the actual prior week had bookings.)
+  // The most recently FINISHED Sun-Sat week — always real, fixed to actual
+  // "now", never affected by whatever week is navigated to in the Report
+  // tab's hero panel. This is what the always-visible header bar uses,
+  // deliberately decoupled from Report-tab navigation.
   function lastCompletedWeekTotal(p) {
     const start = addDays(D(p.weekStart), -7);
     const end = addDays(D(p.weekStart), -1);
@@ -820,14 +819,34 @@
   }
 
   // Three numbers, no table: Muatasam asked for this in place of the detailed
-  // Volume/Key-Percentages breakdown, which read as too dense for a quick check.
-  function buildSimpleKpi(p, target) {
-    const last24h = last24hTotal(p.events);
-    const lastWeek = lastCompletedWeekTotal(p);
+  // Volume/Key-Percentages breakdown. Unlike the header's fixed version, this
+  // panel lives inside the Report tab right under the hero, so it tracks
+  // whatever week is navigated to there — "Last Week" is that week's own
+  // total, and "Last 24 Hours" is real-time for the current week but anchored
+  // to that week's own final day once you've navigated to a past week
+  // (otherwise every past week would show today's real-time count, which has
+  // nothing to do with the period on screen).
+  function buildSimpleKpi(p, wkStart, wkEnd, isCurrentWeek, target) {
+    const weekTotal = tally(p.events, wkStart, wkEnd, false).n;
+
+    let last24h;
+    if (isCurrentWeek) {
+      last24h = last24hTotal(p.events);
+    } else {
+      const anchor = Date.parse(iso(addDays(wkEnd, 1))); // midnight right after that week ends
+      const cutoff = anchor - 24 * 60 * 60 * 1000;
+      last24h = 0;
+      for (const e of p.events) {
+        if (e.x) continue;
+        const at = Date.parse(e.at);
+        if (Number.isFinite(at) && at >= cutoff && at < anchor) last24h += e.n;
+      }
+    }
+
     return `
       <div class="panel skpi-panel">
         <div class="skpi"><div class="skpi-n">${last24h}</div><div class="skpi-l">Last 24 Hours</div></div>
-        <div class="skpi"><div class="skpi-n">${lastWeek}</div><div class="skpi-l">Last Week</div></div>
+        <div class="skpi"><div class="skpi-n">${weekTotal}</div><div class="skpi-l">Last Week</div></div>
         <div class="skpi"><div class="skpi-n">${target}</div><div class="skpi-l">Weekly Target</div></div>
       </div>`;
   }
@@ -923,7 +942,7 @@
       ${bucketLabel(b)}${b.current ? '<br><span style="font-size:9px">so far</span>' : ''}</div>`).join('');
 
     const totalCharter = bs.reduce((s, b) => s + b.charter, 0);
-    const kpiHtml = buildSimpleKpi(p, target);
+    const kpiHtml = buildSimpleKpi(p, wkStart, wkEnd, isCurrentWeek, target);
 
     const subLabel = isCurrentWeek
       ? `Day <b>${elapsed}</b> of 7${left > 0 ? ` · ${left} day${left > 1 ? 's' : ''} left` : ' · final day'}`
