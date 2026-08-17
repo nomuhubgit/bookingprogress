@@ -150,3 +150,7 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// Exposed so the scheduled Slack notifier can reuse this exact scan rather than
+// keeping a second, drifting copy of the same WeTravel logic.
+module.exports.build = build;
