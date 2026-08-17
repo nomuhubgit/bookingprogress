@@ -48,6 +48,13 @@ function dayKey(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
+// The team is in Muscat (UTC+4, no DST), so "has this departure left yet?" has
+// to be judged on their calendar day — otherwise a trip departing today would
+// linger on the board for the first four hours of Oman's morning, while UTC is
+// still on yesterday's date.
+const OMAN_OFFSET_MS = 4 * 60 * 60 * 1000;
+const omanToday = () => new Date(Date.now() + OMAN_OFFSET_MS).toISOString().slice(0, 10);
+
 // "Week 2 (06 Sep - 12 Sep)" carries no year, so anchor it to the trip it belongs
 // to and roll forward when the range crosses New Year.
 function weekDates(packageName, trip) {
@@ -180,7 +187,7 @@ async function loadTrip(trip) {
 }
 
 async function build() {
-  const todayKey = dayKey(new Date());
+  const todayKey = omanToday();
   const allTrips = await listAllTrips();
   const warnings = [];
 
@@ -209,9 +216,12 @@ async function build() {
       return;
     }
 
-    // Only what's still ahead: a week that already ran isn't progress to track.
+    // A departure disappears the day it leaves — once its start date arrives in
+    // Oman, there's no booking progress left to chase, so it drops off rather
+    // than lingering while the trip is under way. Applied per week, so a
+    // multi-week trip keeps showing the weeks that haven't departed yet.
     const weeks = data.weeks
-      .filter((w) => !(w.end && w.end < todayKey) && !(w.start && w.start > SEASON_END))
+      .filter((w) => w.start && w.start > todayKey && w.start <= SEASON_END)
       .map((w) => ({
         id: w.id,
         label: w.label,

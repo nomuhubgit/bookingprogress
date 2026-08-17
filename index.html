@@ -344,6 +344,21 @@
   }
   .announce-body { font-size: 13.5px; color: #3d4a5c; line-height: 1.6; }
 
+  /* Nothing to announce shouldn't shout. Same slot so the layout doesn't jump,
+     but recedes into the page instead of demanding attention. */
+  .announce.empty {
+    background: transparent;
+    border: 1px dashed var(--line);
+    border-left: 1px dashed var(--line);
+    box-shadow: none;
+    padding: 11px 16px;
+    align-items: center;
+  }
+  .announce.empty .announce-icon { font-size: 15px; opacity: .5; }
+  .announce.empty .announce-title {
+    font-weight: 600; font-size: 12.5px; color: var(--text-3); margin-bottom: 0;
+  }
+
   [hidden] { display: none !important; }
   .msg { padding: 24px 4px; color: var(--text-2); font-size: 14px; }
   .msg.err { color: #ffbfa8; }
@@ -423,10 +438,10 @@
   </div>
 
   <div class="announce" id="announce" hidden>
-    <div class="announce-icon">📢</div>
+    <div class="announce-icon" id="announceIcon">📢</div>
     <div>
-      <div class="announce-title">ZNZ | Explore – Seat Update</div>
-      <div class="announce-body">We are still open to accepting participants for this trip. The Operations Team will monitor availability and provide updates on any additional accommodation options that may become available. For now the participants can enlist themselves in the waitlist</div>
+      <div class="announce-title" id="announceTitle"></div>
+      <div class="announce-body" id="announceBody"></div>
     </div>
   </div>
 
@@ -459,6 +474,32 @@
   let showTable = false;
   let view = 'board';   // 'board' | 'table' | 'report'
   let latest = null;
+
+  // Banner content comes from Vercel env vars via /api/announcement, so it can
+  // be changed without touching code. Null means nothing is set, which renders
+  // a quiet "no current announcement" placeholder rather than vanishing — a
+  // disappearing element reads as broken, and keeps the layout from jumping.
+  let announcement = null;
+  async function loadAnnouncement() {
+    try {
+      const res = await fetch('/api/announcement');
+      const a = await res.json();
+      announcement = (a && (a.title || a.body)) ? a : null;
+    } catch (e) {
+      announcement = null;
+    }
+    applyAnnouncement();
+  }
+  function applyAnnouncement() {
+    const has = !!announcement;
+    const el = $('announce');
+    el.classList.toggle('empty', !has);
+    $('announceIcon').textContent = has ? '📢' : '🔕';
+    $('announceTitle').textContent = has ? announcement.title : 'No current announcement';
+    $('announceBody').textContent = has ? announcement.body : '';
+    $('announceBody').hidden = !has;
+    el.hidden = view !== 'board';
+  }
 
   // Which tab and which Report period the screen was on — restored on load
   // so a refresh (or the wall display losing power overnight) doesn't reset
@@ -596,7 +637,7 @@
     // Report or Table view on the next refresh.
     $('board').hidden = view !== 'board';
     $('legend').hidden = view !== 'board';
-    $('announce').hidden = view !== 'board';
+    applyAnnouncement();
 
     // group cards under the month they depart in, keeping date order
     const months = [];
@@ -1175,7 +1216,7 @@
     });
     $('board').hidden = view !== 'board';
     $('legend').hidden = view !== 'board';
-    $('announce').hidden = view !== 'board';
+    applyAnnouncement();
     $('reportWrap').hidden = view !== 'report';
     $('tableWrap').hidden = view !== 'table';
     showTable = view === 'table';
@@ -1202,7 +1243,10 @@
 
   load(false);
   loadReport(false);
+  loadAnnouncement();
   setInterval(() => load(false), POLL_MS);
+  // Picks up a banner edited in Vercel without anyone touching the display.
+  setInterval(loadAnnouncement, POLL_MS);
   // Unconditional now — the header stats need report data on every tab, not
   // just while the Report tab itself is open.
   setInterval(() => loadReport(false), 120000);
