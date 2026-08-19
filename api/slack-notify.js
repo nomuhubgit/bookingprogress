@@ -4,17 +4,18 @@ const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || '';
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'https://bookingprogress.vercel.app';
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
-// 08:00 and 22:00 in Muscat (UTC+4, no DST) are 04:00 and 18:00 UTC.
-const BOUNDARY_HOURS_UTC = [4, 18];
+// 08:00 in Muscat (UTC+4, no DST) is 04:00 UTC. One run per day now — the
+// 22:00 boundary was removed when this dropped from twice- to once-daily.
+const BOUNDARY_HOURS_UTC = [4];
 
 // Cron can fire a little early or late; this keeps a slightly-off run anchored
 // to the boundary it was meant to be, instead of picking the previous one.
 const TOLERANCE_MS = 30 * 60 * 1000;
 
-// Each run reports exactly the span since the previous scheduled run, so the
-// two daily messages tile the day without overlapping. That's what stops a
-// booking announced at 8am from appearing again at 10pm — no state to store,
-// the windows simply never cover the same moment twice.
+// Each run reports exactly the span since the previous scheduled run (now a
+// full 24h, since there's only one run a day), so consecutive messages tile
+// the day without overlapping. That's what stops a booking from ever being
+// announced twice — no state to store, the windows simply never repeat.
 function runWindow(nowMs) {
   const now = new Date(nowMs);
   const boundaries = [];
@@ -31,8 +32,8 @@ function runWindow(nowMs) {
   for (let i = 0; i < boundaries.length; i++) {
     if (boundaries[i] <= nowMs + TOLERANCE_MS) index = i;
   }
-  // Fall back to a plain 12h look-back if something is badly out of range.
-  if (index < 1) return { start: nowMs - 12 * 3600 * 1000, end: nowMs };
+  // Fall back to a plain 24h look-back if something is badly out of range.
+  if (index < 1) return { start: nowMs - 24 * 3600 * 1000, end: nowMs };
 
   return { start: boundaries[index - 1], end: boundaries[index] };
 }
